@@ -1,0 +1,1607 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>term-tabout — 文档预览</title>
+<style>
+  /* ── One Dark · 跨 Ghostty / VSCode / JetBrains / Vim 的最大公约数 ── */
+  :root {
+    --bg:           #1e2127;  /* outer canvas */
+    --panel:        #21252b;  /* sidebar / panel */
+    --panel-2:      #2c313a;  /* line highlight */
+    --border:       #3e4452;  /* selection */
+    --text:         #abb2bf;  /* default fg */
+    --text-strong:  #e6e6e6;  /* bright titles */
+    --muted:        #5c6370;  /* comment grey */
+    --accent:       #61afef;  /* blue */
+    --accent-soft:  #2c3a4d;
+    --green:        #98c379;
+    --yellow:       #e5c07b;
+    --pink:         #e06c75;  /* red */
+    --purple:       #c678dd;
+    --cyan:         #56b6c2;
+    --code-bg:      #282c34;  /* canonical One Dark editor bg */
+    --shadow: 0 8px 24px rgba(0,0,0,.40);
+    --r-lg: 14px;
+    --r-md: 10px;
+    --r-sm: 6px;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC",
+                 "Helvetica Neue", "Microsoft YaHei", sans-serif;
+    font-size: 15px;
+    line-height: 1.7;
+    -webkit-font-smoothing: antialiased;
+  }
+  .layout {
+    display: grid;
+    grid-template-columns: 260px 1fr;
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 32px 24px;
+    gap: 32px;
+  }
+  @media (max-width: 860px) {
+    .layout { grid-template-columns: 1fr; }
+    aside { position: static !important; }
+  }
+
+  /* ── sidebar ── */
+  aside {
+    position: sticky;
+    top: 24px;
+    align-self: start;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: var(--r-lg);
+    padding: 20px 18px;
+    box-shadow: var(--shadow);
+  }
+  .brand {
+    display: flex; align-items: center; gap: 10px;
+    margin-bottom: 18px;
+  }
+  .brand-mark {
+    width: 28px; height: 28px;
+    border-radius: 8px;
+    background: linear-gradient(135deg, var(--accent), var(--pink));
+    display: grid; place-items: center;
+    font-weight: 700; color: white; font-size: 14px;
+  }
+  .brand-title { font-weight: 600; font-size: 15px; }
+  .brand-sub { color: var(--muted); font-size: 12px; }
+  nav .nav-group { margin-bottom: 14px; }
+  nav .nav-label {
+    text-transform: uppercase;
+    font-size: 11px;
+    letter-spacing: .08em;
+    color: var(--muted);
+    margin: 8px 0 6px;
+  }
+  nav a {
+    display: block;
+    color: var(--text);
+    text-decoration: none;
+    padding: 6px 10px;
+    border-radius: var(--r-sm);
+    font-size: 13.5px;
+    line-height: 1.4;
+  }
+  nav a:hover { background: var(--panel-2); }
+  nav a.depth-2 { padding-left: 20px; color: var(--muted); }
+  nav a.depth-2:hover { color: var(--text); }
+
+  /* ── main ── */
+  main { min-width: 0; }
+  .doc {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: var(--r-lg);
+    padding: 32px 36px;
+    margin-bottom: 28px;
+    box-shadow: var(--shadow);
+  }
+  .doc-meta {
+    display: flex; flex-wrap: wrap; gap: 8px;
+    margin-bottom: 20px;
+  }
+  .badge {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 3px 10px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 500;
+    background: var(--accent-soft);
+    color: var(--accent);
+  }
+  .badge.green { background: rgba(123,224,168,.12); color: var(--green); }
+  .badge.yellow { background: rgba(255,212,121,.12); color: var(--yellow); }
+  .badge.gray { background: var(--panel-2); color: var(--muted); }
+
+  h1, h2, h3, h4 { line-height: 1.3; }
+  h1 { font-size: 28px; margin: 0 0 8px; letter-spacing: -0.01em; }
+  h2 {
+    font-size: 20px;
+    margin: 32px 0 12px;
+    padding-top: 14px;
+    border-top: 1px dashed var(--border);
+  }
+  .doc > h2:first-of-type { border-top: 0; padding-top: 0; }
+  h3 { font-size: 16px; margin: 22px 0 8px; color: var(--accent); }
+  h4 { font-size: 14px; margin: 16px 0 6px; color: var(--muted); }
+
+  p { margin: 8px 0 12px; }
+  ul, ol { margin: 8px 0 12px; padding-left: 22px; }
+  li { margin: 4px 0; }
+  li::marker { color: var(--muted); }
+
+  strong { color: var(--text); font-weight: 600; }
+  a { color: var(--accent); }
+
+  code {
+    font-family: "SF Mono", ui-monospace, Menlo, Consolas, monospace;
+    font-size: 13px;
+    background: var(--code-bg);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 1px 6px;
+  }
+  pre {
+    background: var(--code-bg);
+    border: 1px solid var(--border);
+    border-radius: var(--r-md);
+    padding: 14px 16px;
+    overflow-x: auto;
+    margin: 12px 0;
+  }
+  pre code {
+    background: transparent; border: 0; padding: 0;
+    font-size: 12.5px; line-height: 1.55;
+  }
+
+  table {
+    border-collapse: collapse;
+    width: 100%;
+    margin: 12px 0;
+    font-size: 13.5px;
+  }
+  th, td {
+    border: 1px solid var(--border);
+    padding: 8px 12px;
+    text-align: left;
+    vertical-align: top;
+  }
+  th {
+    background: var(--panel-2);
+    font-weight: 600;
+    color: var(--muted);
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+  }
+
+  blockquote {
+    border-left: 3px solid var(--accent);
+    background: var(--accent-soft);
+    margin: 12px 0;
+    padding: 10px 14px;
+    border-radius: 0 var(--r-sm) var(--r-sm) 0;
+    color: var(--text);
+  }
+  blockquote p { margin: 4px 0; }
+
+  /* checklist */
+  .task {
+    display: flex; align-items: flex-start; gap: 10px;
+    padding: 6px 0;
+  }
+  .task input { margin-top: 5px; accent-color: var(--accent); }
+
+  hr { border: 0; border-top: 1px solid var(--border); margin: 28px 0; }
+
+  .kbd {
+    display: inline-block;
+    border: 1px solid var(--border);
+    border-bottom-width: 2px;
+    border-radius: 4px;
+    padding: 0 6px;
+    font-family: "SF Mono", ui-monospace, Menlo, monospace;
+    font-size: 11.5px;
+    background: var(--panel-2);
+    color: var(--text);
+  }
+
+  .footer {
+    color: var(--muted);
+    font-size: 12px;
+    text-align: center;
+    padding: 24px 0 12px;
+  }
+
+  /* ─────────────── Mockup (terminal window + bento grid) ─────────────── */
+  .mockup-stack { display: flex; flex-direction: column; gap: 22px; }
+  .mockup-caption {
+    font-size: 12px; color: var(--muted);
+    margin: 6px 4px 0; letter-spacing: .02em;
+  }
+
+  .term {
+    background: var(--code-bg);                   /* One Dark editor bg #282c34 */
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: var(--shadow);
+    font-family: "SF Mono", "JetBrains Mono", ui-monospace, Menlo, Consolas, monospace;
+    color: var(--text);
+  }
+  .term-chrome {
+    display: flex; align-items: center; gap: 8px;
+    padding: 9px 14px;
+    background: linear-gradient(180deg, var(--panel-2), var(--panel));
+    border-bottom: 1px solid var(--border);
+  }
+  .term-dot {
+    width: 12px; height: 12px; border-radius: 50%;
+    box-shadow: inset 0 0 0 1px rgba(0,0,0,.25);
+  }
+  .term-dot.r { background: #ff5f57; }
+  .term-dot.y { background: #febc2e; }
+  .term-dot.g { background: #28c840; }
+  .term-title {
+    flex: 1; text-align: center;
+    font-size: 12px; color: var(--muted); letter-spacing: .03em;
+  }
+
+  .term-body { padding: 14px 16px 16px; }
+
+  .term-topbar {
+    display: flex; justify-content: space-between; align-items: center;
+    flex-wrap: wrap; gap: 8px;
+    font-size: 12.5px;
+    padding-bottom: 10px; margin-bottom: 12px;
+    border-bottom: 1px dashed var(--border);
+  }
+  .term-topbar .tb-left { color: var(--text); }
+  .term-topbar .tb-left .pill { color: var(--green); margin-right: 8px; }
+  .term-topbar .tb-left .muted { color: var(--muted); }
+  .term-topbar .tb-right { color: var(--muted); }
+  .term-topbar .tb-right .k {
+    color: var(--text);
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 1px 6px;
+    margin: 0 4px 0 10px;
+    font-size: 11.5px;
+  }
+
+  /* ── Responsive Bento Grid ────────────────────────────────────────────
+     2 列 (默认/窄屏) → 4 列 (≥640px) → 6 列 (≥980px)
+     卡片用语义化 class（feature / wide / standard）随断点变化 span。
+  ─────────────────────────────────────────────────────────────────────── */
+  .bento {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    grid-auto-rows: minmax(94px, auto);
+    grid-auto-flow: dense;
+    gap: 10px;
+  }
+  .b-card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 10px 12px;
+    display: flex; flex-direction: column; gap: 4px;
+    position: relative;
+    min-width: 0;                               /* 防止内部长字符串撑破 grid */
+    font-size: 12.5px; line-height: 1.5;
+    grid-column: span 1; grid-row: span 1;
+  }
+  .b-card.feature, .b-card.wide { grid-column: span 2; }   /* 默认 2 列：feature/wide 横跨整行 */
+  .b-card.feature { grid-row: span 2; }                    /* feature 也吃高 */
+
+  @media (min-width: 640px) {
+    .bento { grid-template-columns: repeat(4, 1fr); }
+    .b-card.feature { grid-column: span 2; grid-row: span 2; }
+    .b-card.wide    { grid-column: span 2; }
+  }
+  @media (min-width: 980px) {
+    .bento { grid-template-columns: repeat(6, 1fr); }
+    .b-card.feature { grid-column: span 3; grid-row: span 2; }
+    .b-card.wide    { grid-column: span 2; }
+  }
+
+  .b-card.focused {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 1px var(--accent) inset,
+                0 6px 20px rgba(97,175,239,.18);
+    background: linear-gradient(180deg, rgba(97,175,239,.06), var(--panel));
+  }
+  .b-card.dimmed { opacity: .35; filter: grayscale(.5); }
+
+  .b-head {
+    display: flex; align-items: center; gap: 8px;
+    font-weight: 600; color: var(--text-strong);
+    flex-wrap: wrap;
+  }
+  .b-head .name { font-size: 13px; }
+  .b-head .star { color: var(--yellow); font-size: 12px; }
+  .b-head .focus-arrow {
+    color: var(--accent); font-size: 11px; margin-left: auto;
+    white-space: nowrap;
+  }
+
+  .b-cwd {
+    color: var(--muted); font-size: 11.5px;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .b-cmd {
+    color: var(--yellow); font-size: 12.5px;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .b-cmd .prompt { color: var(--green); margin-right: 4px; }
+  .hl {
+    color: var(--accent);
+    background: rgba(97,175,239,.18);
+    border-radius: 3px; padding: 0 2px;
+  }
+
+  .b-meta {
+    display: flex; gap: 10px; align-items: center; flex-wrap: wrap;
+    margin-top: auto;
+    font-size: 11px; color: var(--muted);
+  }
+  .b-meta .term-tag {
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 1px 7px; border-radius: 999px;
+    font-size: 10.5px; font-weight: 500;
+  }
+  /* 终端品牌色继续走 One Dark 调色板 */
+  .term-tag.iterm    { background: rgba(229,192,123,.12); color: var(--yellow); }
+  .term-tag.ghostty  { background: rgba(198,120,221,.12); color: var(--purple); }
+  .term-tag.terminal { background: rgba(92,99,112,.20);   color: var(--text); }
+  .term-tag .dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+
+  .b-stale {
+    position: absolute; top: 8px; right: 10px;
+    font-size: 10px; color: var(--pink);
+    background: rgba(224,108,117,.12);
+    padding: 1px 6px; border-radius: 4px;
+  }
+
+  .term-statusbar {
+    margin-top: 12px; padding-top: 10px;
+    border-top: 1px dashed var(--border);
+    font-size: 11.5px; color: var(--muted);
+    display: flex; flex-wrap: wrap; gap: 16px;
+  }
+  .term-statusbar .k {
+    color: var(--text);
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 0 5px;
+    margin-right: 4px;
+    font-size: 11px;
+  }
+
+  .filter-bar {
+    display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+    padding: 8px 10px;
+    background: var(--panel);
+    border: 1px solid var(--accent);
+    border-radius: 8px;
+    margin-bottom: 12px;
+    font-size: 12.5px;
+  }
+  .filter-bar .slash { color: var(--accent); font-weight: 700; }
+  .filter-bar .input { color: var(--text-strong); }
+  .filter-bar .caret {
+    display: inline-block; width: 7px; height: 14px;
+    background: var(--accent); vertical-align: -2px; margin-left: 1px;
+    animation: blink 1s steps(2) infinite;
+  }
+  .filter-bar .hits { margin-left: auto; color: var(--muted); font-size: 11.5px; }
+  @keyframes blink { 50% { opacity: 0; } }
+
+  /* focus-card detail */
+  .focus-detail {
+    display: grid;
+    grid-template-columns: 1.4fr 1fr;
+    gap: 18px;
+    padding: 4px;
+  }
+  .focus-detail .b-card { font-size: 13px; padding: 14px 16px; gap: 6px; }
+  .legend { font-size: 12px; color: var(--muted); line-height: 1.8; }
+  .legend .row { display: flex; gap: 10px; align-items: baseline; }
+  .legend .label {
+    min-width: 78px;
+    color: var(--accent);
+    font-family: "SF Mono", ui-monospace, monospace;
+    font-size: 11.5px;
+  }
+  @media (max-width: 720px) {
+    .focus-detail { grid-template-columns: 1fr; }
+  }
+
+  /* ─────────── tab-out 风格：分组瀑布流 + 紧凑列表 ─────────── */
+  .sessions-header {
+    display: flex; align-items: baseline; justify-content: space-between;
+    flex-wrap: wrap; gap: 12px;
+    margin: 4px 0 18px;
+    padding-bottom: 14px;
+    border-bottom: 1px solid var(--border);
+  }
+  .serif-italic {
+    font-family: "Iowan Old Style", "Apple Garamond", Baskerville,
+                 "Times New Roman", "Songti SC", serif;
+    font-style: italic; font-weight: 500;
+    font-size: 24px; margin: 0;
+    color: var(--text-strong); letter-spacing: .01em;
+  }
+  .sessions-meta {
+    display: flex; align-items: center; gap: 12px;
+    font-size: 12px; color: var(--muted);
+  }
+  .sessions-meta .dot { color: var(--border); }
+  .btn-warm {
+    background: transparent;
+    border: 1px solid var(--yellow);
+    color: var(--yellow);
+    border-radius: 6px;
+    padding: 4px 12px;
+    font-size: 11.5px;
+    font-family: inherit;
+    cursor: pointer;
+    display: inline-flex; align-items: center; gap: 6px;
+  }
+  .btn-warm:hover { background: rgba(229,192,123,.08); }
+  .btn-warm.danger { border-color: var(--pink); color: var(--pink); }
+  .btn-warm.danger:hover { background: rgba(224,108,117,.08); }
+
+  /* CSS Grid auto-fit：每列等宽自适应，列数随容器自动计算。
+     不再用 column-count —— 卡片高度大时 break-inside: avoid 不可靠，
+     会把 group 切到下一列。Grid 不会切，长卡片下方留白可接受。 */
+  .masonry {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 14px;
+    align-items: start;
+  }
+  @media (max-width: 520px) {
+    .masonry { grid-template-columns: 1fr; }
+  }
+
+  .session-group {
+    margin: 0;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 12px 12px 10px;
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text",
+                 "PingFang SC", sans-serif;
+    min-width: 0;                          /* 防止内容把 grid 列撑爆 */
+  }
+  .session-group.focused {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 1px var(--accent) inset,
+                0 6px 20px rgba(97,175,239,.16);
+  }
+  .session-group.saved-group {
+    border-color: rgba(229,192,123,.45);
+    background: linear-gradient(180deg, rgba(229,192,123,.04), var(--panel));
+  }
+
+  .group-head {
+    display: flex; align-items: center; gap: 8px;
+    margin-bottom: 8px;
+  }
+  .group-head h3 {
+    margin: 0; font-size: 13.5px; font-weight: 600;
+    color: var(--text-strong);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    flex: 1; min-width: 0;
+  }
+  .group-pill {
+    font-size: 10.5px; padding: 1px 7px;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    color: var(--muted);
+    white-space: nowrap;
+    display: inline-flex; align-items: center; gap: 4px;
+    font-family: "SF Mono", ui-monospace, Menlo, monospace;
+  }
+  .group-pill.saved { color: var(--yellow); border-color: rgba(229,192,123,.40); }
+  .group-pill.stale { color: var(--pink);   border-color: rgba(224,108,117,.40); }
+
+  .session-list { list-style: none; margin: 0; padding: 0; }
+  .session-row {
+    display: flex; align-items: flex-start; gap: 8px;
+    padding: 8px 6px;
+    font-size: 12px;
+    border-radius: 6px;
+    position: relative;
+  }
+  .session-row + .session-row { border-top: 1px dashed var(--border); }
+  .session-row.focused {
+    background: rgba(97,175,239,.08);
+    border-top-color: transparent !important;
+  }
+  .session-row.stale { opacity: .55; }
+
+  .row-ico {
+    width: 20px; height: 20px;
+    border-radius: 5px;
+    display: grid; place-items: center;
+    font-size: 11px;
+    flex-shrink: 0;
+    font-family: "SF Mono", ui-monospace, monospace;
+    font-weight: 600;
+  }
+  /* row-ico — FROZEN per spec §2.4 (docs/superpowers/specs/2026-04-30-term-tabout-design.md).
+     Glyphs mirror each app's REAL icon, do not swap to expressive emoji.
+     iTerm2 $|  green-on-black  /  Terminal.app >_  white-on-black  /  Ghostty 👻  purple tint */
+  .row-ico.iterm    { background: #0f1014; color: #5cff8a; letter-spacing: -.5px; }
+  .row-ico.ghostty  { background: rgba(198,120,221,.14); color: var(--purple); font-size: 13px; line-height: 1; }
+  .row-ico.terminal { background: #0f1014; color: #f0f0f2; letter-spacing: -.5px; }
+
+  .row-body {
+    flex: 1; min-width: 0;
+    display: flex; flex-direction: column; gap: 2px;
+  }
+  .row-path {
+    color: var(--text); font-size: 12px;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .row-path .relative { color: var(--muted); }
+  .row-cmd {
+    color: var(--yellow); font-size: 11.5px;
+    font-family: "SF Mono", ui-monospace, monospace;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .row-cmd .prompt { color: var(--green); margin-right: 4px; }
+  .row-cmd.idle { color: var(--muted); font-style: italic; }
+
+  .row-actions {
+    display: flex; gap: 2px;
+    align-items: center;
+    opacity: 0;                          /* 默认完全隐藏，避免 kill 视觉过重 */
+    transition: opacity .15s;
+    flex-shrink: 0;
+  }
+  .session-row:hover .row-actions,
+  .session-row.focused .row-actions { opacity: 1; }
+  .row-actions .ic {
+    width: 22px; height: 22px;
+    border-radius: 5px;
+    display: grid; place-items: center;
+    cursor: pointer;
+    color: var(--muted);
+    font-size: 12px;
+    background: transparent; border: 0;
+    font-family: inherit;
+  }
+  .row-actions .ic:hover { background: var(--panel-2); color: var(--text); }
+  .row-actions .ic.saved { color: var(--yellow); }
+  /* kill 按钮默认更"轻"：低对比 + 无悬浮强红 */
+  .row-actions .ic.ghost {
+    color: var(--muted);
+    opacity: .55;
+  }
+  .row-actions .ic.ghost:hover {
+    opacity: 1;
+    color: var(--pink);
+    background: transparent;             /* 不再用红底强化，改为只变色 */
+  }
+
+  /* ── Title 行（含手动重命名标记 + hint） ── */
+  .row-title {
+    display: flex; align-items: center; gap: 6px;
+    color: var(--text-strong);
+    font-size: 13px; font-weight: 500;
+    line-height: 1.3;
+    min-width: 0;
+  }
+  .row-title .t-text {
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    flex-shrink: 1; min-width: 0;
+  }
+  .row-title .manual-mark {
+    color: var(--yellow);
+    font-size: 10px;
+    flex-shrink: 0;
+    opacity: .8;
+  }
+  .row-title .rename-hint {
+    font-size: 10px; color: var(--muted);
+    opacity: 0; transition: opacity .15s;
+    font-family: "SF Mono", ui-monospace, monospace;
+    margin-left: auto;
+    flex-shrink: 0;
+  }
+  .session-row:hover .rename-hint,
+  .session-row.focused .rename-hint { opacity: 1; }
+  .rename-hint .k {
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    padding: 0 4px;
+    color: var(--text);
+    margin-right: 3px;
+  }
+
+  /* renaming 状态：title 变成可编辑输入 */
+  .row-title.renaming {
+    background: rgba(97,175,239,.08);
+    border-radius: 4px;
+    padding: 3px 8px;
+    outline: 1px solid var(--accent);
+  }
+  .title-input {
+    background: transparent; border: 0;
+    color: var(--text-strong);
+    font: inherit; font-weight: 500;
+    padding: 0; outline: none;
+    flex: 1; min-width: 0;
+    border-bottom: 1px solid var(--accent);
+  }
+  .title-input::after {
+    content: ''; display: inline-block;
+    width: 6px; height: 12px; background: var(--accent);
+    margin-left: 1px; vertical-align: -1px;
+    animation: blink 1s steps(2) infinite;
+  }
+
+  /* ── 时间维度强化的 meta 行 ── */
+  .row-meta {
+    font-size: 10.5px; color: var(--muted);
+    margin-top: 4px;
+    font-family: "SF Mono", ui-monospace, monospace;
+    display: flex; flex-wrap: wrap;
+    gap: 4px 10px;                       /* 行 gap 紧凑，列 gap 给得宽 */
+    align-items: baseline;
+  }
+  .row-meta .t-pair {
+    display: inline-flex;
+    gap: 4px;
+    align-items: baseline;
+    white-space: nowrap;                 /* 关键：禁止 "2h 18m" 中间断行 */
+  }
+  .row-meta .pid { white-space: nowrap; }
+  .row-meta .t-pair .label {
+    color: var(--muted);
+    font-size: 9.5px;
+    text-transform: uppercase;
+    letter-spacing: .05em;
+  }
+  .row-meta .t-pair .val { color: var(--text); }
+  .row-meta .t-pair.stale .val { color: var(--pink); }
+  .row-meta .t-pair.idle  .val { color: var(--muted); font-style: italic; }
+  .row-meta .sep { color: var(--border); }
+  .row-meta .pid {
+    color: var(--muted);
+  }
+
+  .group-foot {
+    margin-top: 8px;
+    display: flex; gap: 6px;
+  }
+  .btn-group {
+    flex: 1;
+    background: transparent;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--muted);
+    font-size: 11.5px;
+    padding: 5px 8px;
+    cursor: pointer;
+    font-family: inherit;
+    display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  }
+  .btn-group:hover {
+    border-color: var(--pink);
+    color: var(--pink);
+    background: rgba(224,108,117,.06);
+  }
+  .btn-group.muted-action:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+    background: rgba(97,175,239,.06);
+  }
+
+  .dup-badge {
+    font-size: 10px; color: var(--muted);
+    margin-left: 6px;
+    font-family: "SF Mono", ui-monospace, monospace;
+  }
+</style>
+</head>
+<body>
+  <div class="layout">
+    <aside>
+      <div class="brand">
+        <div class="brand-mark">T</div>
+        <div>
+          <div class="brand-title">term-tabout</div>
+          <div class="brand-sub">文档预览 / 内容确认</div>
+        </div>
+      </div>
+      <nav>
+        <div class="nav-group">
+          <div class="nav-label">UI Design</div>
+          <a href="#mockup">Mockup 预览</a>
+          <a class="depth-2" href="#mockup-main">主仪表盘</a>
+          <a class="depth-2" href="#mockup-filter">过滤态</a>
+          <a class="depth-2" href="#mockup-focus">焦点卡片</a>
+        </div>
+        <div class="nav-group">
+          <div class="nav-label">Specification</div>
+          <a href="#spec">Design Spec</a>
+          <a class="depth-2" href="#spec-overview">1. Overview</a>
+          <a class="depth-2" href="#spec-arch">2. Architecture</a>
+          <a class="depth-2" href="#spec-interaction">3. Interaction</a>
+          <a class="depth-2" href="#spec-roadmap">4. Roadmap</a>
+        </div>
+        <div class="nav-group">
+          <div class="nav-label">Plan</div>
+          <a href="#plan">Implementation Plan</a>
+          <a class="depth-2" href="#task-1">Task 1 · Scaffolding</a>
+          <a class="depth-2" href="#task-2">Task 2 · Watcher</a>
+          <a class="depth-2" href="#task-3">Task 3 · UI</a>
+          <a class="depth-2" href="#task-4">Task 4 · Teleport</a>
+        </div>
+      </nav>
+    </aside>
+
+    <main>
+      <!-- ─────────────── UI MOCKUP ─────────────── -->
+      <section class="doc" id="mockup">
+        <div class="doc-meta">
+          <span class="badge">UI Design Mockup</span>
+          <span class="badge gray">高保真视觉稿 · 待确认</span>
+        </div>
+        <h1>界面视觉稿</h1>
+        <p>下方按 Ink 真实渲染效果还原（等宽字体、圆角边框、终端调色板）。先视觉确认，再回到 spec / plan 进入实现。</p>
+
+        <div class="mockup-stack">
+
+          <!-- Mockup 1: Open Sessions (tab-out 风格) -->
+          <div>
+            <div class="term" id="mockup-main">
+              <div class="term-chrome">
+                <span class="term-dot r"></span>
+                <span class="term-dot y"></span>
+                <span class="term-dot g"></span>
+                <span class="term-title">term-tabout</span>
+              </div>
+              <div class="term-body">
+
+                <header class="sessions-header">
+                  <h2 class="serif-italic">Open sessions</h2>
+                  <div class="sessions-meta">
+                    <span>9 sessions</span><span class="dot">·</span>
+                    <span>6 projects</span><span class="dot">·</span>
+                    <span>oldest 7h 04m</span><span class="dot">·</span>
+                    <span>2 saved · 1 stale</span>
+                  </div>
+                </header>
+
+                <div class="masonry">
+
+                  <!-- Group: terminal_tabout (focused, 演示标题 + 完整时间维度) -->
+                  <article class="session-group focused">
+                    <div class="group-head">
+                      <h3>terminal_tabout</h3>
+                      <span class="group-pill">2 sessions</span>
+                      <span class="group-pill">oldest 2h 18m</span>
+                    </div>
+                    <ul class="session-list">
+                      <li class="session-row focused">
+                        <span class="row-ico iterm" title="iTerm2">$|</span>
+                        <div class="row-body">
+                          <div class="row-title">
+                            <span class="t-text">terminal_tabout</span>
+                            <span class="rename-hint"><span class="k">r</span>rename</span>
+                          </div>
+                          <div class="row-path">~/project/terminal_tabout</div>
+                          <div class="row-cmd"><span class="prompt">❯</span>npm run dev</div>
+                          <div class="row-meta">
+                            <span class="t-pair"><span class="label">started</span><span class="val">14:32</span></span>
+                            <span class="t-pair"><span class="label">running</span><span class="val">2h 18m</span></span>
+                            <span class="t-pair"><span class="label">last</span><span class="val">2s</span></span>
+                            <span class="sep">·</span>
+                            <span class="pid">PID 18293</span>
+                          </div>
+                        </div>
+                        <div class="row-actions">
+                          <button class="ic" title="rename">✎</button>
+                          <button class="ic" title="save">★</button>
+                          <button class="ic ghost" title="kill">✕</button>
+                        </div>
+                      </li>
+                      <li class="session-row">
+                        <span class="row-ico ghostty" title="Ghostty">👻</span>
+                        <div class="row-body">
+                          <div class="row-title">
+                            <span class="t-text">terminal_tabout · src/ui</span>
+                          </div>
+                          <div class="row-path"><span class="relative">…/</span>src/ui</div>
+                          <div class="row-cmd"><span class="prompt">❯</span>vim Dashboard.tsx</div>
+                          <div class="row-meta">
+                            <span class="t-pair"><span class="label">started</span><span class="val">15:08</span></span>
+                            <span class="t-pair"><span class="label">running</span><span class="val">1h 42m</span></span>
+                            <span class="t-pair"><span class="label">last</span><span class="val">18s</span></span>
+                            <span class="sep">·</span>
+                            <span class="pid">PID 18421</span>
+                          </div>
+                        </div>
+                        <div class="row-actions">
+                          <button class="ic" title="rename">✎</button>
+                          <button class="ic" title="save">★</button>
+                          <button class="ic ghost" title="kill">✕</button>
+                        </div>
+                      </li>
+                    </ul>
+                  </article>
+
+                  <!-- Group: data-platform (含一个正在重命名的 row 演示) -->
+                  <article class="session-group">
+                    <div class="group-head">
+                      <h3>data-platform</h3>
+                      <span class="group-pill">2 sessions</span>
+                      <span class="group-pill">oldest 7h 04m</span>
+                    </div>
+                    <ul class="session-list">
+                      <li class="session-row focused">
+                        <span class="row-ico iterm" title="iTerm2">$|</span>
+                        <div class="row-body">
+                          <div class="row-title renaming">
+                            <span class="manual-mark">✎</span>
+                            <input class="title-input" value="ETL daily refresh" autofocus />
+                            <span class="rename-hint"><span class="k">⏎</span>save<span class="k" style="margin-left:6px">esc</span>cancel</span>
+                          </div>
+                          <div class="row-path"><span class="relative">…/</span>etl</div>
+                          <div class="row-cmd"><span class="prompt">❯</span>node scripts/etl.mjs</div>
+                          <div class="row-meta">
+                            <span class="t-pair"><span class="label">started</span><span class="val">09:14</span></span>
+                            <span class="t-pair"><span class="label">running</span><span class="val">7h 04m</span></span>
+                            <span class="t-pair"><span class="label">last</span><span class="val">22s</span></span>
+                            <span class="sep">·</span>
+                            <span class="pid">PID 19055</span>
+                          </div>
+                        </div>
+                      </li>
+                      <li class="session-row">
+                        <span class="row-ico iterm" title="iTerm2">$|</span>
+                        <div class="row-body">
+                          <div class="row-title">
+                            <span class="t-text">data-platform</span>
+                          </div>
+                          <div class="row-path">~/work/data-platform</div>
+                          <div class="row-cmd"><span class="prompt">❯</span>bq query --use_legacy_sql=false</div>
+                          <div class="row-meta">
+                            <span class="t-pair"><span class="label">started</span><span class="val">12:30</span></span>
+                            <span class="t-pair"><span class="label">running</span><span class="val">3h 48m</span></span>
+                            <span class="t-pair"><span class="label">last</span><span class="val">1m</span></span>
+                            <span class="sep">·</span>
+                            <span class="pid">PID 19033</span>
+                          </div>
+                        </div>
+                        <div class="row-actions">
+                          <button class="ic" title="rename">✎</button>
+                          <button class="ic" title="save">★</button>
+                          <button class="ic ghost" title="kill">✕</button>
+                        </div>
+                      </li>
+                    </ul>
+                  </article>
+
+                  <!-- Group: caoliao-cms-next (重复 cwd + 用户重命名 + idle) -->
+                  <article class="session-group">
+                    <div class="group-head">
+                      <h3>caoliao-cms-next</h3>
+                      <span class="group-pill">3 sessions</span>
+                      <span class="dup-badge">(2× same cwd)</span>
+                    </div>
+                    <ul class="session-list">
+                      <li class="session-row">
+                        <span class="row-ico iterm" title="iTerm2">$|</span>
+                        <div class="row-body">
+                          <div class="row-title">
+                            <span class="manual-mark" title="user-renamed">✎</span>
+                            <span class="t-text">cms-next · API server</span>
+                          </div>
+                          <div class="row-path"><span class="relative">…/</span>server</div>
+                          <div class="row-cmd"><span class="prompt">❯</span>docker compose up</div>
+                          <div class="row-meta">
+                            <span class="t-pair"><span class="label">started</span><span class="val">13:45</span></span>
+                            <span class="t-pair"><span class="label">running</span><span class="val">2h 33m</span></span>
+                            <span class="t-pair"><span class="label">last</span><span class="val">1m</span></span>
+                            <span class="sep">·</span>
+                            <span class="pid">PID 21851</span>
+                          </div>
+                        </div>
+                        <div class="row-actions">
+                          <button class="ic" title="rename">✎</button>
+                          <button class="ic" title="save">★</button>
+                          <button class="ic ghost" title="kill">✕</button>
+                        </div>
+                      </li>
+                      <li class="session-row">
+                        <span class="row-ico ghostty" title="Ghostty">👻</span>
+                        <div class="row-body">
+                          <div class="row-title">
+                            <span class="t-text">caoliao-cms-next</span>
+                          </div>
+                          <div class="row-path">~/work/caoliao-cms-next</div>
+                          <div class="row-cmd"><span class="prompt">❯</span>pnpm test --watch</div>
+                          <div class="row-meta">
+                            <span class="t-pair"><span class="label">started</span><span class="val">14:00</span></span>
+                            <span class="t-pair"><span class="label">running</span><span class="val">2h 18m</span></span>
+                            <span class="t-pair"><span class="label">last</span><span class="val">14s</span></span>
+                            <span class="sep">·</span>
+                            <span class="pid">PID 21847</span>
+                          </div>
+                        </div>
+                        <div class="row-actions">
+                          <button class="ic" title="rename">✎</button>
+                          <button class="ic" title="save">★</button>
+                          <button class="ic ghost" title="kill">✕</button>
+                        </div>
+                      </li>
+                      <li class="session-row">
+                        <span class="row-ico ghostty" title="Ghostty">👻</span>
+                        <div class="row-body">
+                          <div class="row-title">
+                            <span class="t-text">caoliao-cms-next</span>
+                            <span style="color:var(--muted);font-size:10px;font-family:'SF Mono',monospace">(dup)</span>
+                          </div>
+                          <div class="row-path">~/work/caoliao-cms-next</div>
+                          <div class="row-cmd idle"><span class="prompt">❯</span>idle</div>
+                          <div class="row-meta">
+                            <span class="t-pair"><span class="label">started</span><span class="val">14:12</span></span>
+                            <span class="t-pair"><span class="label">running</span><span class="val">2h 06m</span></span>
+                            <span class="t-pair idle"><span class="label">idle</span><span class="val">4m</span></span>
+                            <span class="sep">·</span>
+                            <span class="pid">PID 21855</span>
+                          </div>
+                        </div>
+                        <div class="row-actions">
+                          <button class="ic" title="rename">✎</button>
+                          <button class="ic" title="save">★</button>
+                          <button class="ic ghost" title="kill">✕</button>
+                        </div>
+                      </li>
+                    </ul>
+                  </article>
+
+                  <!-- Group: dotfiles (saved 单会话) -->
+                  <article class="session-group saved-group">
+                    <div class="group-head">
+                      <h3>dotfiles</h3>
+                      <span class="group-pill saved">★ saved</span>
+                      <span class="group-pill">1 session</span>
+                    </div>
+                    <ul class="session-list">
+                      <li class="session-row">
+                        <span class="row-ico terminal" title="Terminal.app">&gt;_</span>
+                        <div class="row-body">
+                          <div class="row-title">
+                            <span class="t-text">dotfiles</span>
+                          </div>
+                          <div class="row-path">~/.dotfiles</div>
+                          <div class="row-cmd"><span class="prompt">❯</span>vim zshrc</div>
+                          <div class="row-meta">
+                            <span class="t-pair"><span class="label">started</span><span class="val">11:42</span></span>
+                            <span class="t-pair"><span class="label">running</span><span class="val">4h 36m</span></span>
+                            <span class="t-pair"><span class="label">last</span><span class="val">5m</span></span>
+                            <span class="sep">·</span>
+                            <span class="pid">PID 18450</span>
+                          </div>
+                        </div>
+                        <div class="row-actions">
+                          <button class="ic" title="rename">✎</button>
+                          <button class="ic saved" title="unsave">★</button>
+                          <button class="ic ghost" title="kill">✕</button>
+                        </div>
+                      </li>
+                    </ul>
+                  </article>
+
+                  <!-- Group: claude-code (saved + stale，运行时长改成 ran) -->
+                  <article class="session-group saved-group">
+                    <div class="group-head">
+                      <h3>claude-code</h3>
+                      <span class="group-pill saved">★ saved</span>
+                      <span class="group-pill stale">stale</span>
+                    </div>
+                    <ul class="session-list">
+                      <li class="session-row stale">
+                        <span class="row-ico iterm" title="iTerm2">$|</span>
+                        <div class="row-body">
+                          <div class="row-title">
+                            <span class="manual-mark">✎</span>
+                            <span class="t-text">claude · log tail</span>
+                          </div>
+                          <div class="row-path">~/.claude</div>
+                          <div class="row-cmd"><span class="prompt">❯</span>tail -f log/claude.log</div>
+                          <div class="row-meta">
+                            <span class="t-pair"><span class="label">started</span><span class="val">09:14</span></span>
+                            <span class="t-pair"><span class="label">ran</span><span class="val">2h 14m</span></span>
+                            <span class="t-pair stale"><span class="label">died</span><span class="val">2h ago</span></span>
+                            <span class="sep">·</span>
+                            <span class="pid">PID 17502 · gone</span>
+                          </div>
+                        </div>
+                        <div class="row-actions">
+                          <button class="ic saved">★</button>
+                          <button class="ic ghost" title="purge">✕</button>
+                        </div>
+                      </li>
+                    </ul>
+                  </article>
+
+                  <!-- Group: notes (idle 长时间) -->
+                  <article class="session-group">
+                    <div class="group-head">
+                      <h3>notes</h3>
+                      <span class="group-pill">1 session</span>
+                    </div>
+                    <ul class="session-list">
+                      <li class="session-row">
+                        <span class="row-ico ghostty" title="Ghostty">👻</span>
+                        <div class="row-body">
+                          <div class="row-title">
+                            <span class="t-text">notes</span>
+                          </div>
+                          <div class="row-path">~/Documents/notes</div>
+                          <div class="row-cmd idle"><span class="prompt">❯</span>idle</div>
+                          <div class="row-meta">
+                            <span class="t-pair"><span class="label">started</span><span class="val">16:08</span></span>
+                            <span class="t-pair"><span class="label">running</span><span class="val">12m</span></span>
+                            <span class="t-pair idle"><span class="label">idle</span><span class="val">12m</span></span>
+                            <span class="sep">·</span>
+                            <span class="pid">PID 22156</span>
+                          </div>
+                        </div>
+                        <div class="row-actions">
+                          <button class="ic" title="rename">✎</button>
+                          <button class="ic" title="save">★</button>
+                          <button class="ic ghost" title="kill">✕</button>
+                        </div>
+                      </li>
+                    </ul>
+                  </article>
+
+                </div>
+
+                <div class="term-statusbar">
+                  <span><span class="k">↑↓←→</span>navigate</span>
+                  <span><span class="k">⏎</span>teleport</span>
+                  <span><span class="k">x</span>kill</span>
+                  <span><span class="k">c</span>copy cwd</span>
+                  <span><span class="k">s</span>save</span>
+                  <span><span class="k">/</span>filter</span>
+                  <span><span class="k">q</span>quit</span>
+                </div>
+              </div>
+            </div>
+            <div class="mockup-caption">① 主视图 — 按 cwd 顶级目录（git repo 根）分组，多列瀑布流随窗口宽度自适应；focused group 蓝边描出，saved group 暖黄底；同一 cwd 多次出现以 (2× same cwd) 标识。</div>
+          </div>
+
+          <!-- Mockup 2: Filter mode -->
+          <div>
+            <div class="term" id="mockup-filter">
+              <div class="term-chrome">
+                <span class="term-dot r"></span>
+                <span class="term-dot y"></span>
+                <span class="term-dot g"></span>
+                <span class="term-title">term-tabout — Filter</span>
+              </div>
+              <div class="term-body">
+
+                <header class="sessions-header">
+                  <h2 class="serif-italic">Open sessions</h2>
+                  <div class="sessions-meta">
+                    <span style="color:var(--accent)">2 / 9 matches</span>
+                  </div>
+                </header>
+
+                <div class="filter-bar">
+                  <span class="slash">/</span>
+                  <span class="input">node</span><span class="caret"></span>
+                  <span class="hits">esc 清除 · ⏎ 聚焦首项</span>
+                </div>
+
+                <div class="masonry">
+
+                  <article class="session-group focused">
+                    <div class="group-head">
+                      <h3>terminal_tabout</h3>
+                      <span class="group-pill">1 match</span>
+                    </div>
+                    <ul class="session-list">
+                      <li class="session-row focused">
+                        <span class="row-ico iterm" title="iTerm2">$|</span>
+                        <div class="row-body">
+                          <div class="row-title">
+                            <span class="t-text">terminal_tabout</span>
+                          </div>
+                          <div class="row-path">~/project/terminal_tabout</div>
+                          <div class="row-cmd"><span class="prompt">❯</span>npm run dev <span class="hl">node</span> dist/cli.js</div>
+                          <div class="row-meta">
+                            <span class="t-pair"><span class="label">started</span><span class="val">14:32</span></span>
+                            <span class="t-pair"><span class="label">running</span><span class="val">2h 18m</span></span>
+                            <span class="t-pair"><span class="label">last</span><span class="val">2s</span></span>
+                          </div>
+                        </div>
+                      </li>
+                    </ul>
+                  </article>
+
+                  <article class="session-group">
+                    <div class="group-head">
+                      <h3>data-platform</h3>
+                      <span class="group-pill">1 match</span>
+                    </div>
+                    <ul class="session-list">
+                      <li class="session-row">
+                        <span class="row-ico iterm" title="iTerm2">$|</span>
+                        <div class="row-body">
+                          <div class="row-title">
+                            <span class="manual-mark">✎</span>
+                            <span class="t-text">ETL daily refresh</span>
+                          </div>
+                          <div class="row-path"><span class="relative">…/</span>etl</div>
+                          <div class="row-cmd"><span class="prompt">❯</span><span class="hl">node</span> scripts/etl.mjs</div>
+                          <div class="row-meta">
+                            <span class="t-pair"><span class="label">started</span><span class="val">09:14</span></span>
+                            <span class="t-pair"><span class="label">running</span><span class="val">7h 04m</span></span>
+                            <span class="t-pair"><span class="label">last</span><span class="val">22s</span></span>
+                          </div>
+                        </div>
+                      </li>
+                    </ul>
+                  </article>
+
+                </div>
+
+                <p style="margin: 16px 4px 0; font-size:11.5px; color: var(--muted); font-style: italic;">
+                  4 个未命中 group（caoliao-cms-next · dotfiles · claude-code · notes）已折叠隐藏 ·
+                  <span style="color: var(--accent)">esc</span> 还原全部
+                </p>
+              </div>
+            </div>
+            <div class="mockup-caption">② 过滤态 — 输入 <code>/node</code>。命中行内高亮关键字，未命中 group 直接折叠（不再保留 dim 占位，密度优先）；顶部 <code>2 / 9 matches</code> 实时计数。</div>
+          </div>
+
+          <!-- Mockup 3: Anatomy of one group + row -->
+          <div>
+            <div class="term" id="mockup-focus">
+              <div class="term-chrome">
+                <span class="term-dot r"></span>
+                <span class="term-dot y"></span>
+                <span class="term-dot g"></span>
+                <span class="term-title">term-tabout — Group &amp; Row Anatomy</span>
+              </div>
+              <div class="term-body">
+                <div class="focus-detail">
+
+                  <article class="session-group focused" style="margin: 0;">
+                    <div class="group-head">
+                      <h3>terminal_tabout</h3>
+                      <span class="group-pill">2 sessions</span>
+                      <span class="group-pill">oldest 2h 18m</span>
+                    </div>
+                    <ul class="session-list">
+                      <li class="session-row focused">
+                        <span class="row-ico iterm" title="iTerm2">$|</span>
+                        <div class="row-body">
+                          <div class="row-title">
+                            <span class="manual-mark" title="user-renamed">✎</span>
+                            <span class="t-text">term-tabout · dev server</span>
+                            <span class="rename-hint"><span class="k">r</span>rename</span>
+                          </div>
+                          <div class="row-path">~/project/terminal_tabout</div>
+                          <div class="row-cmd"><span class="prompt">❯</span>npm run dev</div>
+                          <div class="row-meta">
+                            <span class="t-pair"><span class="label">started</span><span class="val">14:32</span></span>
+                            <span class="t-pair"><span class="label">running</span><span class="val">2h 18m</span></span>
+                            <span class="t-pair"><span class="label">last</span><span class="val">2s</span></span>
+                            <span class="sep">·</span>
+                            <span class="pid">PID 18293</span>
+                          </div>
+                        </div>
+                        <div class="row-actions">
+                          <button class="ic" title="rename">✎</button>
+                          <button class="ic" title="save">★</button>
+                          <button class="ic ghost" title="kill">✕</button>
+                        </div>
+                      </li>
+                      <li class="session-row">
+                        <span class="row-ico ghostty" title="Ghostty">👻</span>
+                        <div class="row-body">
+                          <div class="row-title">
+                            <span class="t-text">terminal_tabout · src/ui</span>
+                          </div>
+                          <div class="row-path"><span class="relative">…/</span>src/ui</div>
+                          <div class="row-cmd"><span class="prompt">❯</span>vim Dashboard.tsx</div>
+                          <div class="row-meta">
+                            <span class="t-pair"><span class="label">started</span><span class="val">15:08</span></span>
+                            <span class="t-pair"><span class="label">running</span><span class="val">1h 42m</span></span>
+                            <span class="t-pair"><span class="label">last</span><span class="val">18s</span></span>
+                          </div>
+                        </div>
+                      </li>
+                    </ul>
+                  </article>
+
+                  <div class="legend">
+                    <div class="row"><span class="label">group</span><span>同一 git repo 根 / cwd 顶级目录的会话归一组</span></div>
+                    <div class="row"><span class="label">N sessions</span><span>组内活跃会话数</span></div>
+                    <div class="row"><span class="label">oldest</span><span>组内最久会话的 running 时长，便于发现"忘了关"的进程</span></div>
+                    <div class="row"><span class="label">title</span><span>默认 = repo 名 / cwd basename + 子目录后缀；按 <code>r</code> 进入编辑态写入 titles.json</span></div>
+                    <div class="row"><span class="label">✎ 前缀</span><span>title 已被用户手动重命名（区别于自动推断）</span></div>
+                    <div class="row"><span class="label">path</span><span>组内首行展示完整 cwd，子行用 <code>…/</code> 相对后缀</span></div>
+                    <div class="row"><span class="label">❯ cmd</span><span>preexec 钩子捕获的最后命令；idle 时灰斜体</span></div>
+                    <div class="row"><span class="label">started</span><span>shell 进程启动时间（绝对 HH:MM）</span></div>
+                    <div class="row"><span class="label">running</span><span>会话已运行时长 = now − startedAt（绝对值，不衰减）</span></div>
+                    <div class="row"><span class="label">last</span><span>距最近活动（chpwd / preexec）的相对时间；> N 分钟自动归到 idle 标签</span></div>
+                    <div class="row"><span class="label">stale</span><span>updatedAt 未变 + PID 已死 → 红色 died 标记</span></div>
+                    <div class="row"><span class="label">actions</span><span>默认隐藏；hover/focus 才浮出 <code>✎ ★ ✕</code>。kill 用最克制的 ghost 样式</span></div>
+                  </div>
+
+                </div>
+              </div>
+            </div>
+            <div class="mockup-caption">③ Group + Row 解剖 — 每个视觉元素与 Session schema 字段及交互动作的对应关系。</div>
+          </div>
+
+        </div>
+
+        <h2>需要确认的设计决策</h2>
+        <ol>
+          <li><strong>Kill 视觉降权：</strong>顶栏与 group footer 的"Kill all"批量按钮已删除（误触代价过高）；行级 <code>✕</code> 默认完全隐藏，仅 hover/focus 浮现，且使用 ghost 样式 — 不再用红底强化。批量 kill 仅保留键盘路径：<code>X</code> 进入"删除模式" → 多选 → 确认。</li>
+          <li><strong>Title 字段（新增）：</strong>
+            <ul>
+              <li>默认 = git repo 名 / cwd basename，多层 cwd 时附加 <code>· subdir</code> 后缀</li>
+              <li>用户按 <code>r</code> 进入 inline 编辑态；<code>⏎</code> 保存，<code>esc</code> 取消，<code>R</code> 重置回默认</li>
+              <li>持久化到 <code>~/.term-tabout/titles.json</code>，按 cwd 索引（PID 易变，不能作为 key）</li>
+              <li>已重命名的 title 前缀显示 <code>✎</code> 暖黄小标记</li>
+              <li>filter 同时匹配 title 与 cmd 字段</li>
+            </ul>
+          </li>
+          <li><strong>三个时间维度：</strong>
+            <ul>
+              <li><code>started</code> — 进程启动绝对时间（今天 HH:MM，跨天加日期）</li>
+              <li><code>running</code> — 已运行时长 = now − startedAt（绝对值，不衰减）</li>
+              <li><code>last</code> / <code>idle</code> — 距最近 chpwd / preexec 的相对时间，超阈值（默认 5 min）切换到 <code>idle</code> 标签</li>
+              <li>stale 时 <code>last</code> → <code>died</code> 红色标记</li>
+              <li>需要在 schema 里新增 <code>startedAt</code> 字段：collector 首次记录时写入，之后只更新 <code>updatedAt</code></li>
+            </ul>
+          </li>
+          <li><strong>分组维度：</strong>按 git repo 根 / cwd 顶级目录归组。同 cwd 多会话不去重，仅在 group head 标 <code>(2× same cwd)</code> 提示。</li>
+          <li><strong>布局：</strong>CSS multi-column 瀑布流，4 / 3 / 2 / 1 列在 1180 / 860 / 520 px 切换。</li>
+          <li><strong>焦点模型：</strong>group 级（蓝边） + row 级（蓝底）。<code>↑↓</code> 行内移动，<code>←→</code> 跨 group 切换。</li>
+          <li><strong>过滤行为：</strong>未命中 group 直接折叠隐藏（密度优先），底部行计提示。</li>
+          <li><strong>终端品牌色：</strong>iTerm 黄 / Ghostty 紫 / Terminal 灰；cyan + green 留给 Wezterm / Alacritty / Warp。</li>
+        </ol>
+
+        <h2>对 spec 与 plan 的影响</h2>
+        <ul>
+          <li><strong>Session schema 新增字段：</strong> <code>startedAt: number</code>（首次记录时间，毫秒）。<code>title</code> 不入 state 文件。</li>
+          <li><strong>新增持久化文件：</strong> <code>~/.term-tabout/titles.json</code> — <code>{ [cwd]: title }</code>，UI 写、collector 不读。</li>
+          <li><strong>Collector 改动：</strong> 首次记录该 PID 时写入 <code>startedAt = now</code>；后续只更新 <code>updatedAt</code> / <code>cwd</code> / <code>lastCmd</code>。</li>
+          <li><strong>新增按键：</strong> <code>r</code> rename · <code>R</code> reset to default · <code>X</code> 批量删除模式。</li>
+          <li><strong>计划 Task 调整：</strong> Task 2 的 <code>SessionSchema</code> 加 <code>startedAt</code>；Task 3 的 <code>SessionCard</code> 拆分为 <code>SessionGroup</code> + <code>SessionRow</code> 两个组件。</li>
+        </ul>
+      </section>
+
+      <!-- ─────────────── SPEC ─────────────── -->
+      <section class="doc" id="spec">
+        <div class="doc-meta">
+          <span class="badge green">Status: Approved</span>
+          <span class="badge gray">Date: 2026-04-30</span>
+          <span class="badge">Topic: Terminal Tab Visualization &amp; Management CLI</span>
+        </div>
+        <h1>term-tabout Design Specification</h1>
+
+        <h2 id="spec-overview">1. Overview</h2>
+        <p>
+          <code>term-tabout</code> 是一个 macOS 系统级的终端 Tab 可视化与管理工具。
+          它提供类似 <code>tab-out</code> 浏览器扩展的 Bento Grid 仪表盘，
+          用于在不同终端模拟器（iTerm2、Ghostty 等）之间可视化、管理并跳转活跃的终端会话。
+        </p>
+
+        <h2 id="spec-arch">2. Architecture</h2>
+        <p>系统采用解耦架构：基于 Shell 的 Collector + 基于 React Ink 的 UI。</p>
+
+        <h3>2.1 Collector（Shell 插件）</h3>
+        <ul>
+          <li><strong>语言：</strong>Zsh / Fish 脚本</li>
+          <li><strong>钩子：</strong><code>chpwd</code>（目录变更）和 <code>preexec</code>（命令执行前）</li>
+          <li><strong>功能：</strong>采集会话元数据并写入 <code>~/.term-tabout/states/{PID}.json</code></li>
+          <li><strong>采集字段：</strong>
+            <ul>
+              <li>PID, PPID</li>
+              <li>当前工作目录（CWD）</li>
+              <li>终端程序（<code>$TERM_PROGRAM</code>）</li>
+              <li>最近执行的命令</li>
+              <li>时间戳</li>
+            </ul>
+          </li>
+        </ul>
+
+        <h3>2.2 Storage</h3>
+        <ul>
+          <li><strong>活跃会话：</strong><code>~/.term-tabout/states/*.json</code>（每个活跃 shell 一个文件）</li>
+          <li><strong>持久化书签：</strong><code>~/.term-tabout/saved.yaml</code>（用户保存的路径）</li>
+        </ul>
+
+        <h3>2.3 UI（React Ink）</h3>
+        <ul>
+          <li><strong>技术栈：</strong>Node.js + React + Ink</li>
+          <li><strong>布局：</strong>响应式 Bento Grid</li>
+          <li><strong>特性：</strong>
+            <ul>
+              <li>通过 <code>fs.watch</code> 实时更新</li>
+              <li>过期进程检测与清理</li>
+              <li>按终端区分的视觉品牌（颜色/图标）</li>
+            </ul>
+          </li>
+        </ul>
+
+        <h2 id="spec-interaction">3. Interaction Design</h2>
+        <table>
+          <thead>
+            <tr><th>动作</th><th>按键</th><th>说明</th></tr>
+          </thead>
+          <tbody>
+            <tr><td><strong>Navigate</strong></td><td><span class="kbd">↑</span> <span class="kbd">↓</span> <span class="kbd">←</span> <span class="kbd">→</span></td><td>在卡片之间移动焦点</td></tr>
+            <tr><td><strong>Teleport</strong></td><td><span class="kbd">Enter</span></td><td>激活目标终端窗口/Tab（支持时通过 AppleScript）</td></tr>
+            <tr><td><strong>Kill</strong></td><td><span class="kbd">x</span></td><td>结束该 Tab 关联的进程</td></tr>
+            <tr><td><strong>Copy</strong></td><td><span class="kbd">c</span></td><td>将 CWD 复制到系统剪贴板</td></tr>
+            <tr><td><strong>Save</strong></td><td><span class="kbd">s</span></td><td>把路径保存进 <code>saved.yaml</code></td></tr>
+            <tr><td><strong>Filter</strong></td><td><span class="kbd">/</span></td><td>按项目名或命令做实时模糊搜索</td></tr>
+            <tr><td><strong>Quit</strong></td><td><span class="kbd">q</span> / <span class="kbd">Esc</span></td><td>退出 CLI</td></tr>
+          </tbody>
+        </table>
+
+        <h2 id="spec-roadmap">4. Implementation Roadmap</h2>
+        <ol>
+          <li><strong>Phase 1 — Collector：</strong>编写 shell hook 与 state 文件落盘逻辑</li>
+          <li><strong>Phase 2 — CLI Core：</strong>构建 Node.js 骨架与文件 watcher</li>
+          <li><strong>Phase 3 — UI：</strong>使用 Ink 实现 Bento Grid 组件</li>
+          <li><strong>Phase 4 — Integration：</strong>接入 AppleScript 跳转与剪贴板支持</li>
+          <li><strong>Phase 5 — Refinement：</strong>打磨动画、配色与错误处理</li>
+        </ol>
+      </section>
+
+      <!-- ─────────────── PLAN ─────────────── -->
+      <section class="doc" id="plan">
+        <div class="doc-meta">
+          <span class="badge yellow">Status: 未开工</span>
+          <span class="badge gray">Date: 2026-04-30</span>
+          <span class="badge">For: subagent-driven-development</span>
+        </div>
+        <h1>Term-Tabout Implementation Plan</h1>
+
+        <blockquote>
+          <p><strong>For agentic workers:</strong> 必需子技能 — 使用
+          <code>superpowers:subagent-driven-development</code>（推荐）或
+          <code>superpowers:executing-plans</code> 按任务执行该计划。每步以
+          <code>- [ ]</code> checkbox 形式跟踪。</p>
+        </blockquote>
+
+        <p><strong>Goal：</strong>构建一个 macOS 终端 Tab 可视化工具，包含 React Ink 仪表盘 + 基于 shell 的会话采集。</p>
+        <p><strong>Architecture：</strong>Zsh/Fish collector 把会话元数据写入 <code>~/.term-tabout/states/</code>；Node.js + React Ink CLI 监听该目录并渲染 Bento Grid 风格 UI，支持进程管理与跳转。</p>
+        <p><strong>Tech Stack：</strong>Node.js · TypeScript · React · Ink · Zsh · AppleScript</p>
+
+        <hr/>
+
+        <h2 id="task-1">Task 1 — 项目脚手架 &amp; Collector</h2>
+        <p><strong>Files：</strong></p>
+        <ul>
+          <li>Create <code>package.json</code></li>
+          <li>Create <code>tsconfig.json</code></li>
+          <li>Create <code>src/collector/term-tabout.zsh</code></li>
+          <li>Create <code>src/collector/term-tabout.fish</code></li>
+        </ul>
+
+        <div class="task"><input type="checkbox" disabled><div><strong>Step 1：</strong>初始化 <code>package.json</code></div></div>
+<pre><code>{
+  "name": "term-tabout",
+  "version": "0.1.0",
+  "bin": { "term-tabout": "./dist/cli.js" },
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/cli.js",
+    "dev":   "tsc -w"
+  },
+  "dependencies": {
+    "ink": "^5.0.0",
+    "react": "^18.2.0",
+    "zod": "^3.22.0",
+    "chokidar": "^3.5.3",
+    "chalk": "^4.1.2",
+    "meow": "^9.0.0",
+    "clipboardy": "^3.0.0",
+    "yaml": "^2.3.4"
+  },
+  "devDependencies": {
+    "@types/react": "^18.2.0",
+    "@types/node":  "^20.0.0",
+    "typescript":   "^5.0.0"
+  }
+}</code></pre>
+
+        <div class="task"><input type="checkbox" disabled><div><strong>Step 2：</strong>创建 Zsh Collector</div></div>
+<pre><code># src/collector/term-tabout.zsh
+_term_tabout_record() {
+  local state_dir="$HOME/.term-tabout/states"
+  mkdir -p "$state_dir"
+  local pid=$$
+  local cwd=$(pwd)
+  local cmd=$1
+  local term=$TERM_PROGRAM
+
+  cat &lt;&lt;EOF &gt; "$state_dir/$pid.json"
+{
+  "pid":  $pid,
+  "cwd":  "$cwd",
+  "term": "$term",
+  "lastCmd":   "${cmd:-"idle"}",
+  "updatedAt": $(date +%s)000
+}
+EOF
+}
+
+autoload -Uz add-zsh-hook
+add-zsh-hook chpwd _term_tabout_record
+preexec_functions+=(_term_tabout_record)</code></pre>
+
+        <div class="task"><input type="checkbox" disabled><div><strong>Step 3：</strong>提交</div></div>
+<pre><code>git add package.json src/collector/term-tabout.zsh
+git commit -m "chore: initial scaffold and zsh collector"</code></pre>
+
+        <h2 id="task-2">Task 2 — 核心数据引擎 &amp; Watcher</h2>
+        <p><strong>Files：</strong> Create <code>src/types.ts</code>, <code>src/engine/watcher.ts</code></p>
+
+        <div class="task"><input type="checkbox" disabled><div><strong>Step 1：</strong>定义 Session 类型</div></div>
+<pre><code>import { z } from 'zod';
+
+export const SessionSchema = z.object({
+  pid: z.number(),
+  cwd: z.string(),
+  term: z.string().optional(),
+  lastCmd: z.string().optional(),
+  updatedAt: z.number()
+});
+
+export type Session = z.infer&lt;typeof SessionSchema&gt;;</code></pre>
+
+        <div class="task"><input type="checkbox" disabled><div><strong>Step 2：</strong>实现 File Watcher</div></div>
+<pre><code>import chokidar from 'chokidar';
+import fs from 'fs/promises';
+import path from 'path';
+import { SessionSchema, Session } from '../types';
+
+export class SessionManager {
+  private stateDir = path.join(process.env.HOME!, '.term-tabout/states');
+
+  async getActiveSessions(): Promise&lt;Session[]&gt; {
+    const files = await fs.readdir(this.stateDir);
+    const sessions = await Promise.all(
+      files.map(async (f) =&gt; {
+        try {
+          const content = await fs.readFile(path.join(this.stateDir, f), 'utf-8');
+          return SessionSchema.parse(JSON.parse(content));
+        } catch { return null; }
+      })
+    );
+    return sessions.filter((s): s is Session =&gt; s !== null);
+  }
+
+  watch(callback: (sessions: Session[]) =&gt; void) {
+    const watcher = chokidar.watch(this.stateDir);
+    watcher.on('all', async () =&gt; {
+      const sessions = await this.getActiveSessions();
+      callback(sessions);
+    });
+    return () =&gt; watcher.close();
+  }
+}</code></pre>
+
+        <h2 id="task-3">Task 3 — Ink 基础 UI 布局</h2>
+        <p><strong>Files：</strong> Create <code>src/ui/Dashboard.tsx</code>, <code>src/ui/SessionCard.tsx</code>, <code>src/cli.ts</code></p>
+
+        <div class="task"><input type="checkbox" disabled><div><strong>Step 1：</strong>SessionCard 组件</div></div>
+<pre><code>import React from 'react';
+import { Box, Text } from 'ink';
+import { Session } from '../types';
+
+export const SessionCard = ({ session, isFocused }:
+  { session: Session; isFocused: boolean }) =&gt; (
+  &lt;Box
+    borderStyle="round"
+    borderColor={isFocused ? 'cyan' : 'gray'}
+    paddingX={1}
+    width={30}
+    flexDirection="column"
+  &gt;
+    &lt;Text bold color="white"&gt;{path.basename(session.cwd)}&lt;/Text&gt;
+    &lt;Text dimColor&gt;{session.cwd}&lt;/Text&gt;
+    &lt;Box marginTop={1}&gt;
+      &lt;Text color="yellow"&gt;❯ {session.lastCmd}&lt;/Text&gt;
+    &lt;/Box&gt;
+  &lt;/Box&gt;
+);</code></pre>
+
+        <div class="task"><input type="checkbox" disabled><div><strong>Step 2：</strong>Dashboard Grid</div></div>
+<pre><code>import React, { useState, useEffect } from 'react';
+import { Box, useInput } from 'ink';
+import { SessionManager } from '../engine/watcher';
+import { Session } from '../types';
+import { SessionCard } from './SessionCard';
+
+export const Dashboard = () =&gt; {
+  const [sessions, setSessions] = useState&lt;Session[]&gt;([]);
+  const [focusIndex, setFocusIndex] = useState(0);
+  const manager = new SessionManager();
+
+  useEffect(() =&gt; manager.watch(setSessions), []);
+
+  useInput((input, key) =&gt; {
+    if (key.rightArrow) setFocusIndex(i =&gt; Math.min(i + 1, sessions.length - 1));
+    if (key.leftArrow)  setFocusIndex(i =&gt; Math.max(i - 1, 0));
+    if (input === 'q')  process.exit();
+  });
+
+  return (
+    &lt;Box flexDirection="row" flexWrap="wrap"&gt;
+      {sessions.map((s, i) =&gt; (
+        &lt;SessionCard key={s.pid} session={s} isFocused={i === focusIndex} /&gt;
+      ))}
+    &lt;/Box&gt;
+  );
+};</code></pre>
+
+        <h2 id="task-4">Task 4 — 终端集成（跳转 &amp; 终止）</h2>
+        <p><strong>Files：</strong> Modify <code>src/ui/Dashboard.tsx</code>, Create <code>src/utils/terminal.ts</code></p>
+
+        <div class="task"><input type="checkbox" disabled><div><strong>Step 1：</strong>AppleScript Teleport</div></div>
+<pre><code>import { exec } from 'child_process';
+
+export const teleportToSession = (pid: number, term: string) =&gt; {
+  if (term === 'iTerm.app') {
+    const script = `tell application "iTerm" to activate`; // Simplified
+    exec(`osascript -e '${script}'`);
+  }
+};
+
+export const killSession = (pid: number) =&gt; {
+  process.kill(pid, 'SIGTERM');
+};</code></pre>
+
+        <div class="task"><input type="checkbox" disabled><div><strong>Step 2：</strong>在 Dashboard 中接线</div></div>
+<pre><code>useInput((input, key) =&gt; {
+  const current = sessions[focusIndex];
+  if (key.return)    teleportToSession(current.pid, current.term || '');
+  if (input === 'x') killSession(current.pid);
+});</code></pre>
+      </section>
+
+      <p class="footer">
+        来源 ·
+        <code>docs/superpowers/specs/2026-04-30-term-tabout-design.md</code> &nbsp;·&nbsp;
+        <code>docs/superpowers/plans/2026-04-30-term-tabout.md</code>
+      </p>
+    </main>
+  </div>
+</body>
+</html>

@@ -1,0 +1,47 @@
+{
+  "name": "term-tabout",
+  "version": "0.1.0",
+  "description": "macOS terminal session dashboard — Bento-style overview of every active shell, with teleport, save, rename and three-axis time metrics.",
+  "type": "module",
+  "bin": {
+    "term-tabout": "dist/cli.js"
+  },
+  "scripts": {
+    "build": "tsc && chmod +x dist/cli.js",
+    "start": "node dist/cli.js",
+    "dev": "tsc -w",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "chalk": "^5.3.0",
+    "chokidar": "^3.6.0",
+    "clipboardy": "^4.0.0",
+    "ink": "^5.0.1",
+    "meow": "^13.2.0",
+    "react": "^18.3.1",
+    "yaml": "^2.4.5",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "^20.12.0",
+    "@types/react": "^18.3.0",
+    "typescript": "^5.4.0",
+    "vitest": "^4.1.5"
+  },
+  "files": [
+    "dist",
+    "src/collector"
+  ],
+  "main": "index.js",
+  "directories": {
+    "doc": "docs"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC"
+}
