@@ -4,6 +4,7 @@ import path from 'node:path';
 import os from 'node:os';
 import { SessionSchema, type Session, type SessionWithMeta } from '../types.js';
 import { findRepoRootSync, getBranchSync } from '../utils/repo.js';
+import { JsonTitlesStore } from '../utils/titles.js';
 
 const DEFAULT_HOME = process.env.TERM_TABOUT_DIR
   ? path.resolve(process.env.TERM_TABOUT_DIR)
@@ -38,8 +39,40 @@ export class SessionManager {
   }
 
   /**
+   * 删除单个 PID 的 state 文件。默认仅当该 PID 已死；
+   * `force: true` 时不论存活与否都删（用于强行清理 VSCode 等
+   * 无法 teleport / kill 的 row）。
+   */
+  async forgetPid(
+    pid: number,
+    opts: { force?: boolean } = {}
+  ): Promise<{ removed: boolean; reason?: string }> {
+    if (!opts.force && isAlive(pid)) {
+      return { removed: false, reason: 'pid is still alive' };
+    }
+    const file = path.join(this.stateDir, `${pid}.json`);
+    try {
+      await fs.unlink(file);
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
+        return { removed: false, reason: 'state file not found' };
+      }
+      throw err;
+    }
+    try {
+      const store = new JsonTitlesStore(this.home);
+      await store.load();
+      await store.delete(pid);
+    } catch {
+      // titles cleanup is best-effort
+    }
+    return { removed: true };
+  }
+
+  /**
    * 删除 PID 已死的 state 文件，返回清理数量。
    * 这是 spec 设计的权威 stale cleanup 路径，弥补 collector zshexit 失效的场景。
+   * 同时清理 titles.json 中对应 dead PID 的条目。
    */
   async purgeStale(): Promise<number> {
     const sessions = await this.getActiveSessions();
@@ -52,6 +85,14 @@ export class SessionManager {
       } catch {
         // 别人已删，忽略
       }
+    }
+    // titles 也跟着清掉
+    try {
+      const store = new JsonTitlesStore(this.home);
+      const alive = new Set(sessions.filter((s) => s.alive).map((s) => s.pid));
+      await store.pruneDead(alive);
+    } catch {
+      // 非关键路径，不影响主流程
     }
     return purged;
   }
@@ -112,7 +153,7 @@ export class SessionManager {
       // collector 老版本不写 startedAt → 用 updatedAt 兜底，避免会话被 schema 直接丢弃
       startedAt: s.startedAt ?? s.updatedAt,
       alive: isAlive(s.pid),
-      title: this.titles[s.cwd],
+      title: this.titles[String(s.pid)],
       saved: this.saved.has(s.cwd),
       repoRoot,
       branch: repoRoot ? getBranchSync(repoRoot) : null,

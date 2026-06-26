@@ -1,0 +1,1229 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>term-tabout</title>
+<style>
+  :root {
+    --bg:           #1e2127;
+    --panel:        #21252b;
+    --panel-2:      #2c313a;
+    --border:       #3e4452;
+    --text:         #abb2bf;
+    --text-strong:  #e6e6e6;
+    --muted:        #5c6370;
+    --accent:       #61afef;
+    --accent-soft:  #2c3a4d;
+    --green:        #98c379;
+    --yellow:       #e5c07b;
+    --pink:         #e06c75;
+    --purple:       #c678dd;
+    --cyan:         #56b6c2;
+    --code-bg:      #282c34;
+    --shadow: 0 8px 24px rgba(0,0,0,.40);
+    --r-lg: 14px;
+    --r-md: 10px;
+    --r-sm: 6px;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: var(--bg); color: var(--text); }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC",
+                 "Helvetica Neue", "Microsoft YaHei", sans-serif;
+    font-size: 14px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+    min-height: 100vh;
+  }
+  .app {
+    /* 上限放宽 —— 4K 显示器上 3 列太浪费横向空间，
+       让 column-width 自然算列数；过宽 (>2000px) 保留些边距防变成"长条带"。 */
+    max-width: 2000px;
+    margin: 0 auto;
+    padding: 24px 22px 40px;
+  }
+  .sessions-header {
+    display: flex; align-items: baseline; justify-content: space-between;
+    flex-wrap: wrap; gap: 12px;
+    margin: 4px 0 16px;
+    padding-bottom: 14px;
+    border-bottom: 1px solid var(--border);
+  }
+  .serif-italic {
+    font-family: "Iowan Old Style", "Apple Garamond", Baskerville,
+                 "Times New Roman", "Songti SC", serif;
+    font-style: italic; font-weight: 500;
+    font-size: 26px; margin: 0;
+    color: var(--text-strong); letter-spacing: .01em;
+  }
+  .sessions-meta {
+    display: flex; align-items: center; gap: 12px;
+    font-size: 12px; color: var(--muted);
+  }
+  .sessions-meta .dot { color: var(--border); }
+  .sessions-meta .live {
+    display: inline-flex; align-items: center; gap: 5px;
+    color: var(--green);
+  }
+  .sessions-meta .live .pulse {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: var(--green);
+    box-shadow: 0 0 0 0 rgba(152,195,121,.6);
+    animation: pulse 2s infinite;
+  }
+  .sessions-meta .live.dead { color: var(--pink); }
+  .sessions-meta .live.dead .pulse { background: var(--pink); animation: none; }
+  .sessions-meta .purge-link {
+    color: var(--pink);
+    cursor: pointer;
+    text-decoration: underline dotted;
+    text-underline-offset: 3px;
+  }
+  .sessions-meta .purge-link:hover { color: var(--text-strong); }
+  .sessions-meta .sync-link {
+    color: var(--accent);
+    cursor: pointer;
+    text-decoration: underline dotted;
+    text-underline-offset: 3px;
+  }
+  .sessions-meta .sync-link:hover { color: var(--text-strong); }
+  .sessions-meta .sync-link.busy { opacity: .5; cursor: progress; }
+  .sessions-meta .toggle-link {
+    cursor: pointer;
+    text-decoration: underline dotted;
+    text-underline-offset: 3px;
+  }
+  .sessions-meta .toggle-link.on { color: var(--accent); }
+  .sessions-meta .toggle-link.off { color: var(--muted); }
+  .sessions-meta .toggle-link:hover { color: var(--text-strong); }
+  @keyframes pulse {
+    0% { box-shadow: 0 0 0 0 rgba(152,195,121,.5); }
+    70% { box-shadow: 0 0 0 6px rgba(152,195,121,0); }
+    100% { box-shadow: 0 0 0 0 rgba(152,195,121,0); }
+  }
+
+  /* Filter bar */
+  .filter-bar {
+    display: none;
+    align-items: center; gap: 8px; flex-wrap: wrap;
+    padding: 8px 12px;
+    background: var(--panel);
+    border: 1px solid var(--accent);
+    border-radius: 8px;
+    margin-bottom: 14px;
+    font-size: 13px;
+  }
+  .filter-bar.on { display: flex; }
+  .filter-bar .slash { color: var(--accent); font-weight: 700; }
+  .filter-bar input {
+    flex: 1; min-width: 0;
+    background: transparent; border: 0;
+    color: var(--text-strong);
+    font: inherit; font-size: 13px;
+    outline: none;
+    padding: 2px 0;
+  }
+  .filter-bar .hits { color: var(--muted); font-size: 12px; }
+
+  /* Masonry via CSS multi-column flow — cards pack top-down,
+     no row-track alignment gaps. */
+  .masonry {
+    column-width: 300px;
+    column-gap: 14px;
+  }
+
+  .session-group {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 12px 12px 10px;
+    min-width: 0;
+    margin: 0 0 14px;
+    break-inside: avoid;
+    -webkit-column-break-inside: avoid;
+    page-break-inside: avoid;
+    display: block;
+    width: 100%;
+  }
+  .session-group.focused {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 1px var(--accent) inset, 0 6px 20px rgba(97,175,239,.16);
+  }
+  .session-group.saved-group {
+    border-color: rgba(229,192,123,.45);
+    background: linear-gradient(180deg, rgba(229,192,123,.04), var(--panel));
+  }
+
+  .group-head {
+    display: flex; align-items: center; gap: 6px 8px;
+    margin-bottom: 8px;
+    flex-wrap: wrap;
+  }
+  .group-head h3 {
+    margin: 0; font-size: 13.5px; font-weight: 600;
+    color: var(--text-strong);
+    /* 不截断、允许换行 —— 比 "use…" 这样的截断对识别更友好 */
+    overflow-wrap: anywhere;
+    word-break: break-word;
+    flex: 1 1 auto; min-width: 0;
+    line-height: 1.3;
+  }
+  .group-pill {
+    font-size: 10.5px; padding: 1px 7px;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    color: var(--muted);
+    white-space: nowrap;
+    font-family: "SF Mono", ui-monospace, Menlo, monospace;
+  }
+  .group-pill.branch { color: var(--purple); border-color: rgba(198,120,221,.4); }
+  .group-pill.saved { color: var(--yellow); border-color: rgba(229,192,123,.40); }
+  .group-pill.stale { color: var(--pink);   border-color: rgba(224,108,117,.40); }
+
+  .session-list { list-style: none; margin: 0; padding: 0; }
+  .session-row {
+    display: flex; align-items: flex-start; gap: 8px;
+    padding: 8px 6px;
+    font-size: 12px;
+    border-radius: 6px;
+    position: relative;
+    cursor: pointer;
+  }
+  .session-row + .session-row { border-top: 1px dashed var(--border); }
+  .session-row:hover {
+    background: rgba(97,175,239,.05);
+  }
+  .session-row.focused {
+    background: rgba(97,175,239,.10);
+    border-top-color: transparent !important;
+  }
+  .session-row.focused + .session-row { border-top-color: transparent; }
+  .session-row.stale { opacity: .55; }
+
+  .row-ico {
+    width: 22px; height: 22px;
+    border-radius: 5px;
+    display: grid; place-items: center;
+    font-size: 11px;
+    flex-shrink: 0;
+    font-family: "SF Mono", ui-monospace, monospace;
+    font-weight: 600;
+  }
+  .row-ico.iterm    { background: #0f1014; color: #5cff8a; letter-spacing: -.5px; }
+  .row-ico.ghostty  { background: rgba(198,120,221,.14); color: var(--purple); font-size: 13px; line-height: 1; }
+  .row-ico.terminal { background: #0f1014; color: #f0f0f2; letter-spacing: -.5px; }
+  .row-ico.vscode   { background: rgba(97,175,239,.16); color: var(--accent); font-size: 11px; }
+  .row-ico.unknown  { background: var(--panel-2); color: var(--muted); }
+  .session-row.no-teleport { cursor: default; }
+  /* path 和 badge 在同一行，flex layout 让 badge 始终可见，path 截断 */
+  .row-pathline {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+    min-width: 0;
+  }
+  .row-pathline .row-path {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+  .row-badge {
+    flex-shrink: 0;
+    color: var(--accent);
+    background: rgba(97,175,239,.10);
+    border-radius: 3px;
+    font-size: 9.5px;
+    padding: 0 5px;
+    letter-spacing: .04em;
+    text-transform: uppercase;
+    font-family: "SF Mono", ui-monospace, monospace;
+    line-height: 1.5;
+  }
+
+  .row-body {
+    flex: 1; min-width: 0;
+    display: flex; flex-direction: column; gap: 2px;
+  }
+  .row-title {
+    display: flex; align-items: center; gap: 6px;
+    color: var(--text-strong);
+    font-size: 13px; font-weight: 500;
+    line-height: 1.3;
+    min-width: 0;
+  }
+  .row-title .t-text {
+    /* 允许换行到 2 行后再截断 —— Claude OSC 标题信息密度高，
+       "✳ Fix mini-program input flickering and cursor issues" 截断成
+       "✳ Fix m…" 完全丢失意义 */
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+    line-height: 1.3;
+    flex-shrink: 1; min-width: 0;
+  }
+  .row-title .manual-mark {
+    color: var(--yellow); font-size: 10px; flex-shrink: 0; opacity: .8;
+  }
+  .row-title .rename-hint {
+    font-size: 10px; color: var(--muted);
+    opacity: 0; transition: opacity .15s;
+    font-family: "SF Mono", ui-monospace, monospace;
+    margin-left: auto;
+    flex-shrink: 0;
+  }
+  .session-row:hover .rename-hint,
+  .session-row.focused .rename-hint { opacity: 1; }
+  .rename-hint .k {
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    padding: 0 4px;
+    color: var(--text);
+    margin-right: 3px;
+  }
+  .row-title.renaming {
+    background: rgba(97,175,239,.08);
+    border-radius: 4px;
+    padding: 2px 8px;
+    outline: 1px solid var(--accent);
+  }
+  .title-input {
+    background: transparent; border: 0;
+    color: var(--text-strong);
+    font: inherit; font-weight: 500;
+    padding: 0; outline: none;
+    flex: 1; min-width: 0;
+    border-bottom: 1px solid var(--accent);
+  }
+
+  .row-path {
+    color: var(--text); font-size: 12px;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .row-path .relative { color: var(--muted); }
+  .row-cmd {
+    color: var(--yellow); font-size: 11.5px;
+    font-family: "SF Mono", ui-monospace, monospace;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .row-cmd .prompt { color: var(--green); margin-right: 4px; }
+  .row-cmd.idle { color: var(--muted); font-style: italic; }
+
+  .row-meta {
+    font-size: 10.5px; color: var(--muted);
+    margin-top: 4px;
+    font-family: "SF Mono", ui-monospace, monospace;
+    display: flex; flex-wrap: wrap;
+    gap: 4px 10px;
+    align-items: baseline;
+  }
+  .row-meta .t-pair {
+    display: inline-flex; gap: 4px;
+    align-items: baseline;
+    white-space: nowrap;
+  }
+  .row-meta .t-pair .label {
+    color: var(--muted); font-size: 9.5px;
+    text-transform: uppercase; letter-spacing: .05em;
+  }
+  .row-meta .t-pair .val { color: var(--text); }
+  .row-meta .t-pair.idle .val { color: var(--muted); font-style: italic; }
+  .row-meta .t-pair.stale .val { color: var(--pink); }
+  .row-meta .sep { color: var(--border); }
+  .row-meta .pid { color: var(--muted); white-space: nowrap; }
+
+  /* 浮在 row 右上角；不占 layout，标题/路径永远拿完整宽度。
+     hover/focus 时淡入，半透明背景透出底层文字一点，方便用户判断遮到哪。 */
+  .row-actions {
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    display: flex; gap: 2px; align-items: center;
+    padding: 2px 3px;
+    border-radius: 6px;
+    background: rgba(33, 37, 43, .82);             /* var(--panel) at ~82% */
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+    border: 1px solid rgba(62, 68, 82, .5);        /* var(--border) faint */
+    box-shadow: 0 2px 8px rgba(0,0,0,.25);
+    opacity: 0; transform: translateY(-2px);
+    transition: opacity .12s, transform .12s;
+    pointer-events: none;
+    z-index: 2;
+  }
+  .session-row:hover .row-actions,
+  .session-row.focused .row-actions {
+    opacity: 1; transform: translateY(0);
+    pointer-events: auto;
+  }
+  .row-actions .ic {
+    width: 22px; height: 22px;
+    border-radius: 4px;
+    display: grid; place-items: center;
+    cursor: pointer;
+    color: var(--muted);
+    font-size: 12px;
+    background: transparent; border: 0;
+    font-family: inherit;
+  }
+  .row-actions .ic:hover { background: var(--panel-2); color: var(--text); }
+  .row-actions .ic.active { color: var(--yellow); }
+  .row-actions .ic.ghost { opacity: .65; }
+  .row-actions .ic.ghost:hover {
+    opacity: 1; color: var(--pink); background: transparent;
+  }
+
+  .empty {
+    text-align: center; color: var(--muted);
+    padding: 80px 20px;
+    font-size: 13px;
+  }
+  .empty h3 { color: var(--text); font-weight: 500; margin: 0 0 8px; font-size: 16px; }
+  .empty code {
+    background: var(--code-bg);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 2px 8px;
+    font-family: "SF Mono", ui-monospace, monospace;
+    font-size: 12px;
+    color: var(--text);
+  }
+
+  /* Toast */
+  .toast {
+    position: fixed; bottom: 24px; left: 50%;
+    transform: translateX(-50%) translateY(20px);
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 8px 16px;
+    border-radius: 8px;
+    font-size: 13px;
+    box-shadow: var(--shadow);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity .2s, transform .2s;
+    z-index: 1000;
+  }
+  .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+  .toast.err { border-color: var(--pink); color: var(--pink); }
+  .toast.ok  { border-color: var(--green); }
+
+  /* Help / keybindings footer */
+  .keys {
+    margin-top: 28px;
+    padding: 12px 14px;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    color: var(--muted);
+    font-size: 11.5px;
+    display: flex; flex-wrap: wrap; gap: 14px;
+    font-family: "SF Mono", ui-monospace, monospace;
+  }
+  .keys .kbd {
+    color: var(--text); background: var(--panel-2);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 0 5px;
+    margin-right: 4px;
+    font-size: 11px;
+  }
+</style>
+</head>
+<body>
+  <div class="app">
+    <header class="sessions-header">
+      <h2 class="serif-italic">Open sessions</h2>
+      <div class="sessions-meta" id="stats">
+        <span class="live" id="live"><span class="pulse"></span><span class="text">connecting…</span></span>
+      </div>
+    </header>
+
+    <div class="filter-bar" id="filterBar">
+      <span class="slash">/</span>
+      <input id="filterInput" type="text" placeholder="filter by title, path, cwd, command, group…" autocomplete="off" spellcheck="false" />
+      <span class="hits" id="filterHits"></span>
+    </div>
+
+    <div class="masonry" id="grid"></div>
+
+    <div class="keys">
+      <span><span class="kbd">↑↓</span>row</span>
+      <span><span class="kbd">←→</span>group</span>
+      <span><span class="kbd">⏎</span>teleport</span>
+      <span><span class="kbd">r</span>rename</span>
+      <span><span class="kbd">R</span>reset title</span>
+      <span><span class="kbd">s</span>save cwd</span>
+      <span><span class="kbd">c</span>copy cwd</span>
+      <span><span class="kbd">/</span>filter</span>
+      <span><span class="kbd">x</span>kill / forget if stale</span>
+      <span><span class="kbd">Esc</span>clear focus / close filter</span>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <script>
+  (() => {
+    const $grid = document.getElementById('grid');
+    const $stats = document.getElementById('stats');
+    const $live = document.getElementById('live');
+    const $filterBar = document.getElementById('filterBar');
+    const $filterInput = document.getElementById('filterInput');
+    const $filterHits = document.getElementById('filterHits');
+    const $toast = document.getElementById('toast');
+
+    /** @type {{groups:any[], totals:any} | null} */
+    let state = null;
+    /** Focused row by PID — survives re-renders. */
+    let focusedPid = null;
+    /** Renaming in-progress for which PID; null = none. */
+    let renamingPid = null;
+    /** In-flight rename input value/selection — survives SSE rerenders. */
+    let renamingDraft = null; // { value, selStart, selEnd }
+    /** Plain text filter; empty string = no filter. */
+    let filter = '';
+    /** Hide VSCode integrated terminals (persisted to localStorage). */
+    let hideVscode = (() => {
+      try { return localStorage.getItem('term-tabout.hideVscode') === '1'; }
+      catch { return false; }
+    })();
+    let lastEventAt = 0;
+    let liveTicker = null;
+
+    // ── helpers ───────────────────────────────────────────
+    const HOME = (() => {
+      // Best guess — server doesn't expose; just used to shorten paths.
+      // We'll fallback to whatever the server returns inside cwd strings.
+      return null;
+    })();
+
+    function tildify(p) {
+      // The server can pass any cwd; we only attempt a generic ~/ collapse
+      // if the path starts with /Users/<one segment>/ — purely cosmetic.
+      const m = p.match(/^\/Users\/[^/]+(\/|$)/);
+      if (m) return '~' + p.slice(m[0].length - 1);
+      return p;
+    }
+
+    function fmtClock(ms) {
+      const d = new Date(ms);
+      const h = String(d.getHours()).padStart(2, '0');
+      const m = String(d.getMinutes()).padStart(2, '0');
+      return `${h}:${m}`;
+    }
+    function fmtDuration(seconds) {
+      if (seconds < 60) return `${Math.max(1, Math.floor(seconds))}s`;
+      const m = Math.floor(seconds / 60);
+      if (m < 60) return `${m}m`;
+      const h = Math.floor(m / 60);
+      const rm = m % 60;
+      return rm === 0 ? `${h}h` : `${h}h ${rm}m`;
+    }
+    function fmtRelative(seconds) {
+      if (seconds < 5) return 'just now';
+      if (seconds < 60) return `${Math.floor(seconds)}s`;
+      const m = Math.floor(seconds / 60);
+      if (m < 60) return `${m}m`;
+      const h = Math.floor(m / 60);
+      if (h < 24) return `${h}h`;
+      return `${Math.floor(h / 24)}d`;
+    }
+    function termTag(term) {
+      const t = (term || '').toLowerCase();
+      if (t.includes('iterm')) return { cls: 'iterm', glyph: '$|' };
+      if (t.includes('ghostty')) return { cls: 'ghostty', glyph: '👻' };
+      if (t.includes('apple_terminal') || t === 'terminal') return { cls: 'terminal', glyph: '>_' };
+      if (t.includes('vscode') || t.includes('code')) return { cls: 'vscode', glyph: '⌥' };
+      return { cls: 'unknown', glyph: '•' };
+    }
+    function isTeleportable(term) {
+      const t = (term || '').toLowerCase();
+      if (t.includes('vscode') || t.includes('code')) return false;
+      return true;
+    }
+    function escapeHTML(s) {
+      return String(s).replace(/[&<>"']/g, (c) => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+      }[c]));
+    }
+    function defaultTitle(s) {
+      const last = s.cwd.split('/').filter(Boolean).pop() || s.cwd;
+      return last;
+    }
+    function resolveTitle(s) {
+      return s.title && s.title.length ? s.title : defaultTitle(s);
+    }
+    function matchesFilter(s, group) {
+      if (hideVscode && !isTeleportable(s.term)) return false;
+      if (!filter) return true;
+      const f = filter.toLowerCase();
+      return (
+        (group.name || '').toLowerCase().includes(f) ||
+        (s.cwd || '').toLowerCase().includes(f) ||
+        (s.lastCmd || '').toLowerCase().includes(f) ||
+        (resolveTitle(s) || '').toLowerCase().includes(f) ||
+        String(s.pid).includes(f)
+      );
+    }
+    function showToast(msg, kind = '') {
+      $toast.textContent = msg;
+      $toast.className = 'toast show ' + kind;
+      clearTimeout(showToast._t);
+      showToast._t = setTimeout(() => {
+        $toast.className = 'toast';
+      }, 2200);
+    }
+
+    // ── API calls ─────────────────────────────────────────
+    async function api(path, opts = {}) {
+      const res = await fetch(path, {
+        method: opts.method || 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: opts.body ? JSON.stringify(opts.body) : undefined,
+      });
+      if (!res.ok) {
+        const text = await res.text().catch(() => '');
+        throw new Error(`${res.status}: ${text || res.statusText}`);
+      }
+      return res.json().catch(() => ({}));
+    }
+    const renameApi    = (pid, title) => api('/api/rename', { body: { pid, title } });
+    const resetApi     = (pid) => api('/api/reset-title', { body: { pid } });
+    const teleportApi  = (pid) => api('/api/teleport', { body: { pid } });
+    const killApi      = (pid) => api('/api/kill', { body: { pid } });
+    const forgetApi    = (pid) => api('/api/forget', { body: { pid } });
+    const purgeApi     = () => api('/api/purge-stale', { body: {} });
+    const saveApi      = (cwd, saved) => api('/api/save', { body: { cwd, saved } });
+    const copyApi      = (text) => api('/api/copy', { body: { text } });
+
+    // ── render ────────────────────────────────────────────
+    function render() {
+      if (!state) {
+        $grid.innerHTML = '';
+        return;
+      }
+      // Snapshot the in-flight rename input so SSE pushes don't wipe typing.
+      if (renamingPid != null) {
+        const live = $grid.querySelector('.title-input');
+        if (live) {
+          renamingDraft = {
+            value: live.value,
+            selStart: live.selectionStart ?? live.value.length,
+            selEnd: live.selectionEnd ?? live.value.length,
+          };
+        }
+      }
+      const now = Date.now();
+      // Build the flat focus order (used by ↑↓←→):
+      window.__rows = [];
+
+      // Apply filter at group/session level
+      const filteredGroups = state.groups
+        .map((g) => ({
+          ...g,
+          sessions: g.sessions.filter((s) => matchesFilter(s, g)),
+        }))
+        .filter((g) => g.sessions.length > 0);
+
+      // hits counter
+      const totalHits = filteredGroups.reduce((n, g) => n + g.sessions.length, 0);
+      $filterHits.textContent = filter
+        ? `${totalHits} match${totalHits === 1 ? '' : 'es'}`
+        : '';
+
+      if (filteredGroups.length === 0) {
+        $grid.innerHTML = filter
+          ? `<div class="empty"><h3>No matches</h3><div>Try a different filter, or press <code>Esc</code> to clear.</div></div>`
+          : `<div class="empty"><h3>No active sessions</h3>
+              <div>Open a terminal and run a command, or check<br/>that the collector is wired in your shell.</div>
+              <div style="margin-top:14px;"><code>term-tabout --doctor</code></div>
+             </div>`;
+        return;
+      }
+
+      const html = filteredGroups.map((g) => renderGroup(g, now)).join('');
+      $grid.innerHTML = html;
+
+      // Build flat row order for keyboard nav
+      filteredGroups.forEach((g, gi) => {
+        g.sessions.forEach((s, si) => {
+          window.__rows.push({ pid: s.pid, cwd: s.cwd, gi, si, group: g, session: s });
+        });
+      });
+
+      attachHandlers();
+
+      // Re-focus if focusedPid still present, else focus first
+      const stillExists = window.__rows.some((r) => r.pid === focusedPid);
+      if (!stillExists) focusedPid = window.__rows[0]?.pid ?? null;
+      applyFocusClass();
+
+      // If renaming, restore the input WITH the typed value & caret intact
+      if (renamingPid != null && window.__rows.some((r) => r.pid === renamingPid)) {
+        beginRename(renamingPid, { restoreDraft: renamingDraft });
+      } else {
+        renamingPid = null;
+        renamingDraft = null;
+      }
+    }
+
+    function renderGroup(g, now) {
+      const focusedHere = window.__rows && window.__rows.some(
+        (r) => r.group === g && r.pid === focusedPid
+      );
+      const cls = [
+        'session-group',
+        focusedHere ? 'focused' : '',
+        g.saved ? 'saved-group' : '',
+      ].filter(Boolean).join(' ');
+      const pills = [];
+      pills.push(`<span class="group-pill">${g.sessions.length} session${g.sessions.length === 1 ? '' : 's'}</span>`);
+      if (g.branch) pills.push(`<span class="group-pill branch">${escapeHTML(g.branch)}</span>`);
+      if (g.hasStale) pills.push(`<span class="group-pill stale">stale</span>`);
+      if (g.saved) pills.push(`<span class="group-pill saved">★ saved</span>`);
+      if (g.duplicateCwds > 0) pills.push(`<span class="group-pill">${g.duplicateCwds + 1}× same cwd</span>`);
+
+      const rows = g.sessions.map((s) => renderRow(s, g, now)).join('');
+      return `
+        <article class="${cls}" data-group="${escapeHTML(g.name)}">
+          <div class="group-head">
+            <h3>${escapeHTML(g.name)}</h3>
+            ${pills.join('')}
+          </div>
+          <ul class="session-list">${rows}</ul>
+        </article>
+      `;
+    }
+
+    function renderRow(s, g, now) {
+      const tag = termTag(s.term);
+      const isFocused = s.pid === focusedPid;
+      const stale = !s.alive;
+      const teleportable = isTeleportable(s.term);
+      const cls = [
+        'session-row',
+        isFocused ? 'focused' : '',
+        stale ? 'stale' : '',
+        teleportable ? '' : 'no-teleport',
+      ].filter(Boolean).join(' ');
+
+      const title = resolveTitle(s);
+      const hasManual = !!(s.title && s.title.length);
+      const startedAt = s.startedAt || s.updatedAt;
+      const runningSec = Math.max(0, (now - startedAt) / 1000);
+      const lastSec = Math.max(0, (now - (s.updatedAt || now)) / 1000);
+      const isIdle = lastSec > 60;
+
+      const lastClass = stale ? 'stale' : (isIdle ? 'idle' : '');
+      const lastLabel = stale ? 'died' : 'last';
+
+      const cmd = (s.lastCmd && s.lastCmd !== 'idle')
+        ? `<div class="row-cmd"><span class="prompt">❯</span>${escapeHTML(s.lastCmd)}</div>`
+        : `<div class="row-cmd idle">idle</div>`;
+
+      return `
+        <li class="${cls}" data-pid="${s.pid}" data-cwd="${escapeHTML(s.cwd)}">
+          <span class="row-ico ${tag.cls}" title="${escapeHTML(s.term || 'unknown')}">${escapeHTML(tag.glyph)}</span>
+          <div class="row-body">
+            <div class="row-title" data-role="title">
+              <span class="t-text">${escapeHTML(title)}</span>
+              ${hasManual ? `<span class="manual-mark" title="manually renamed">✎</span>` : ''}
+              <span class="rename-hint"><span class="k">r</span>rename</span>
+            </div>
+            <div class="row-pathline">
+              <span class="row-path">${escapeHTML(tildify(s.cwd))}</span>
+              ${!isTeleportable(s.term) ? `<span class="row-badge" title="VSCode integrated terminal">VSCODE</span>` : ''}
+            </div>
+            ${cmd}
+            <div class="row-meta">
+              <span class="t-pair"><span class="label">started</span><span class="val">${fmtClock(startedAt)}</span></span>
+              <span class="t-pair"><span class="label">running</span><span class="val">${fmtDuration(runningSec)}</span></span>
+              <span class="t-pair ${lastClass}"><span class="label">${lastLabel}</span><span class="val">${fmtRelative(lastSec)}</span></span>
+              <span class="sep">·</span>
+              <span class="pid">PID ${s.pid}</span>
+            </div>
+          </div>
+          <div class="row-actions">
+            ${stale ? '' : `<button class="ic" data-act="rename" title="rename (r)">✎</button>`}
+            <button class="ic ${s.saved ? 'active' : ''}" data-act="save" title="${s.saved ? 'unsave (s)' : 'save (s)'}">★</button>
+            <button class="ic" data-act="copy" title="copy cwd (c)">⧉</button>
+            ${stale
+              ? `<button class="ic ghost" data-act="forget" title="forget (already exited) — x">🗑</button>`
+              : `<button class="ic ghost" data-act="kill" title="kill (x)">✕</button>`}
+          </div>
+        </li>
+      `;
+    }
+
+    function applyFocusClass() {
+      // Refresh focused class without rerendering.
+      document.querySelectorAll('.session-row.focused').forEach((el) => el.classList.remove('focused'));
+      document.querySelectorAll('.session-group.focused').forEach((el) => el.classList.remove('focused'));
+      if (focusedPid == null) return;
+      const row = $grid.querySelector(`.session-row[data-pid="${focusedPid}"]`);
+      if (row) {
+        row.classList.add('focused');
+        row.closest('.session-group')?.classList.add('focused');
+        row.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+      }
+    }
+
+    // ── handlers ──────────────────────────────────────────
+    function attachHandlers() {
+      $grid.querySelectorAll('.session-row').forEach((row) => {
+        const pid = Number(row.dataset.pid);
+        const cwd = row.dataset.cwd;
+        row.addEventListener('click', (e) => {
+          // ignore clicks inside actions / inputs
+          if (e.target.closest('button, input')) return;
+          focusedPid = pid;
+          applyFocusClass();
+        });
+        row.addEventListener('dblclick', (e) => {
+          if (e.target.closest('button, input')) return;
+          focusedPid = pid;
+          doTeleport(pid);
+        });
+        row.querySelectorAll('button.ic').forEach((btn) => {
+          btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            focusedPid = pid;
+            applyFocusClass();
+            const act = btn.dataset.act;
+            console.log('[term-tabout] action', act, 'on pid', pid);
+            if (act === 'rename') beginRename(pid);
+            else if (act === 'save') doSave(pid, cwd);
+            else if (act === 'kill') doKill(pid);
+            else if (act === 'forget') doForget(pid);
+            else if (act === 'copy') doCopy(cwd);
+          });
+        });
+      });
+    }
+
+    function getCurrentRow() {
+      if (!window.__rows) return null;
+      return window.__rows.find((r) => r.pid === focusedPid) || null;
+    }
+    function moveFocus(dr, dg) {
+      if (!window.__rows || window.__rows.length === 0) return;
+      const cur = getCurrentRow();
+      if (!cur) {
+        focusedPid = window.__rows[0].pid;
+        applyFocusClass();
+        return;
+      }
+      if (dr !== 0) {
+        // walk flat order
+        const idx = window.__rows.indexOf(cur);
+        const next = window.__rows[Math.max(0, Math.min(window.__rows.length - 1, idx + dr))];
+        focusedPid = next.pid;
+      } else if (dg !== 0) {
+        // jump to first row of prev/next group
+        const groups = [];
+        for (const r of window.__rows) {
+          if (groups[groups.length - 1] !== r.group) groups.push(r.group);
+        }
+        const curGi = groups.indexOf(cur.group);
+        const nextGi = Math.max(0, Math.min(groups.length - 1, curGi + dg));
+        const nextGroup = groups[nextGi];
+        focusedPid = window.__rows.find((r) => r.group === nextGroup).pid;
+      }
+      applyFocusClass();
+    }
+
+    // ── actions ───────────────────────────────────────────
+    function beginRename(pid, opts = {}) {
+      const row = $grid.querySelector(`.session-row[data-pid="${pid}"]`);
+      if (!row) return;
+      const titleEl = row.querySelector('[data-role="title"]');
+      if (!titleEl) return;
+      renamingPid = pid;
+      const session = window.__rows.find((r) => r.pid === pid)?.session;
+      const draft = opts.restoreDraft;
+      const initial = draft ? draft.value : (session ? resolveTitle(session) : '');
+      titleEl.classList.add('renaming');
+      titleEl.innerHTML = `<input class="title-input" type="text" value="${escapeHTML(initial)}" />`;
+      const input = titleEl.querySelector('input');
+      input.focus();
+      if (draft) {
+        // restore caret/selection so typing isn't interrupted by SSE rerender
+        try { input.setSelectionRange(draft.selStart, draft.selEnd); } catch {}
+      } else {
+        input.select();
+      }
+      const commit = async (apply) => {
+        if (renamingPid !== pid) return;
+        renamingPid = null;
+        renamingDraft = null;
+        // 显式 blur 一下，确保焦点离开 input，否则下次按快捷键会被 inInput 短路
+        try { input.blur(); } catch {}
+        document.body.focus?.();
+        if (!apply) { render(); return; }
+        const next = input.value.trim();
+        if (!next) { render(); return; }
+        try {
+          await renameApi(pid, next);
+          showToast(`renamed → ${next}`, 'ok');
+        } catch (e) {
+          showToast(`rename failed: ${e.message}`, 'err');
+        }
+      };
+      input.addEventListener('input', () => {
+        renamingDraft = {
+          value: input.value,
+          selStart: input.selectionStart ?? input.value.length,
+          selEnd: input.selectionEnd ?? input.value.length,
+        };
+      });
+      input.addEventListener('keydown', (e) => {
+        e.stopPropagation();
+        if (e.key === 'Enter') commit(true);
+        else if (e.key === 'Escape') commit(false);
+      });
+      input.addEventListener('blur', () => commit(true));
+    }
+    async function doResetTitle(pid) {
+      try {
+        await resetApi(pid);
+        showToast('title reset', 'ok');
+      } catch (e) {
+        showToast(`reset failed: ${e.message}`, 'err');
+      }
+    }
+    async function doTeleport(pid) {
+      const session = window.__rows.find((r) => r.pid === pid)?.session;
+      if (session && !session.alive) {
+        showToast(`cannot teleport — session has exited`, 'err');
+        return;
+      }
+      if (session && !isTeleportable(session.term)) {
+        showToast(`teleport unsupported for ${session.term || 'this terminal'}`, 'err');
+        return;
+      }
+      // 用裸 fetch，不走 api()：teleport 失败时 server 返回 500 + 详细 body（含
+      // needsAccessibility 标志），api() 会 throw 把 body 吞进 error message。
+      let res, body = {};
+      try {
+        res = await fetch('/api/teleport', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ pid }),
+        });
+        try { body = await res.json(); } catch {}
+      } catch (e) {
+        showToast(`teleport failed: ${e.message}`, 'err');
+        return;
+      }
+      if (body.exitCode === 0) {
+        showToast(`teleported → PID ${pid}`, 'ok');
+        return;
+      }
+      if (body.needsAccessibility) {
+        if (confirm(
+          '需要授予 node 辅助功能权限才能切换 Ghostty tab。\n\n' +
+          '点"确定"会：\n' +
+          ' 1. 打开"系统设置 → 隐私与安全性 → 辅助功能"\n' +
+          ' 2. 在 Finder 高亮要授权的 node 二进制\n\n' +
+          '把 node 拖进列表并启用开关，然后重启 server。'
+        )) {
+          await fetch('/api/reveal-node', { method: 'POST' }).catch(() => {});
+        }
+        return;
+      }
+      showToast(`teleport failed: ${(body.stderr || '').split('\n')[0] || `HTTP ${res?.status}`}`, 'err');
+    }
+    async function doKill(pid) {
+      const session = window.__rows.find((r) => r.pid === pid)?.session;
+      // VSCode integrated terminals can't be killed cleanly (auto-respawn).
+      // Offer force-forget instead.
+      if (session && !isTeleportable(session.term)) {
+        if (confirm(`PID ${pid} is a VSCode integrated terminal — kill won't stick. Force-forget the row instead?`)) {
+          return doForceForget(pid);
+        }
+        return;
+      }
+      if (!confirm(`Close terminal session PID ${pid}? Sends SIGHUP, escalates to SIGKILL if needed.`)) return;
+      try {
+        const r = await killApi(pid);
+        const sent = (r.signaled || []).join(' → ');
+        // 若 server 端发现 PID 已经死了，signaled 是空——退化为 forget，
+        // 否则行不会消失（UI state 落后于 server isAlive 探测）。
+        if (!sent) {
+          await doForget(pid);
+          return;
+        }
+        if (r.stillAlive) showToast(`PID ${pid} still alive after ${sent}`, 'err');
+        else showToast(`closed PID ${pid} (${sent})`, 'ok');
+      } catch (e) {
+        showToast(`close failed: ${e.message}`, 'err');
+      }
+    }
+    async function doForget(pid) {
+      // Don't go through api() — it throws on 4xx, swallowing the body
+      // we need to detect the "alive" rejection and offer a force fallback.
+      let res;
+      try {
+        res = await fetch('/api/forget', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ pid }),
+        });
+      } catch (e) {
+        showToast(`forget failed: ${e.message}`, 'err');
+        return;
+      }
+      let body = {};
+      try { body = await res.json(); } catch {}
+      if (res.ok && body.removed) {
+        showToast(`forgot PID ${pid}`, 'ok');
+        return;
+      }
+      if (body.reason === 'pid is still alive') {
+        if (confirm(`PID ${pid} is still alive (probably a VSCode integrated terminal). Force-forget anyway? The row will reappear if that shell logs another event.`)) {
+          return doForceForget(pid);
+        }
+        return;
+      }
+      showToast(`forget skipped: ${body.reason || `HTTP ${res.status}`}`, 'err');
+    }
+    async function doForceForget(pid) {
+      try {
+        const r = await api('/api/forget', { body: { pid, force: true } });
+        if (r.removed) showToast(`force-forgot PID ${pid}`, 'ok');
+        else showToast(`forget skipped: ${r.reason || 'unknown'}`, 'err');
+      } catch (e) {
+        showToast(`forget failed: ${e.message}`, 'err');
+      }
+    }
+    function toggleVscode() {
+      hideVscode = !hideVscode;
+      try { localStorage.setItem('term-tabout.hideVscode', hideVscode ? '1' : '0'); } catch {}
+      render();
+      renderStats();
+    }
+    async function doPullTitles() {
+      const link = document.getElementById('syncLink');
+      if (link) link.classList.add('busy');
+      try {
+        const r = await api('/api/pull-titles', { body: {} });
+        const n = (r.updates || []).length;
+        if (n === 0) {
+          showToast(`no title changes (${r.supportedCount}/${r.probedCount} sessions support pull)`, 'ok');
+        } else {
+          showToast(`synced ${n} title${n === 1 ? '' : 's'} from terminal`, 'ok');
+        }
+      } catch (e) {
+        showToast(`sync failed: ${e.message}`, 'err');
+      } finally {
+        document.getElementById('syncLink')?.classList.remove('busy');
+      }
+    }
+    async function doPurgeStale() {
+      if (!state || !state.totals.stale) {
+        showToast('no stale sessions', 'ok');
+        return;
+      }
+      if (!confirm(`Purge ${state.totals.stale} stale session${state.totals.stale === 1 ? '' : 's'}?`)) return;
+      try {
+        const r = await purgeApi();
+        showToast(`purged ${r.purged} stale`, 'ok');
+      } catch (e) {
+        showToast(`purge failed: ${e.message}`, 'err');
+      }
+    }
+    async function doSave(pid, cwd) {
+      const session = window.__rows.find((r) => r.pid === pid)?.session;
+      if (!session) return;
+      try {
+        await saveApi(cwd, !session.saved);
+        showToast(session.saved ? `unsaved ${cwd}` : `saved ${cwd}`, 'ok');
+      } catch (e) {
+        showToast(`save failed: ${e.message}`, 'err');
+      }
+    }
+    async function doCopy(cwd) {
+      try {
+        if (navigator.clipboard && window.isSecureContext) {
+          await navigator.clipboard.writeText(cwd);
+        } else {
+          await copyApi(cwd);
+        }
+        showToast(`copied ${cwd}`, 'ok');
+      } catch {
+        try { await copyApi(cwd); showToast(`copied ${cwd}`, 'ok'); }
+        catch (e) { showToast(`copy failed: ${e.message}`, 'err'); }
+      }
+    }
+
+    // ── keyboard ──────────────────────────────────────────
+    document.addEventListener('keydown', (e) => {
+      // 带 modifier 的按键留给浏览器/OS（Cmd+R / Cmd+Shift+R / Ctrl+F / …），
+      // 否则会把 hard-refresh 的 'R' 误当成 reset-title。
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      // If user is typing in any input, only special-case the filter input.
+      const inInput = e.target.tagName === 'INPUT';
+      if (inInput) {
+        if (e.target === $filterInput) {
+          if (e.key === 'Escape') {
+            e.preventDefault();
+            closeFilter();
+          } else if (e.key === 'Enter') {
+            e.preventDefault();
+            $filterInput.blur();
+          }
+          return;
+        }
+        return; // renaming input handles its own keys
+      }
+
+      // Open filter on '/'
+      if (e.key === '/' && !$filterBar.classList.contains('on')) {
+        e.preventDefault();
+        openFilter();
+        return;
+      }
+      if (e.key === 'Escape') {
+        if ($filterBar.classList.contains('on')) closeFilter();
+        else focusedPid = null, applyFocusClass();
+        return;
+      }
+      if (e.key === 'ArrowDown' || e.key === 'j') { e.preventDefault(); moveFocus(1, 0); return; }
+      if (e.key === 'ArrowUp'   || e.key === 'k') { e.preventDefault(); moveFocus(-1, 0); return; }
+      if (e.key === 'ArrowRight' || e.key === 'l') { e.preventDefault(); moveFocus(0, 1); return; }
+      if (e.key === 'ArrowLeft'  || e.key === 'h') { e.preventDefault(); moveFocus(0, -1); return; }
+
+      const cur = getCurrentRow();
+      if (!cur) {
+        // 没 focus 行时，让快捷键给个明确反馈，避免"按了没反应"的体验
+        if (['Enter','r','R','s','c','x'].includes(e.key)) {
+          e.preventDefault();
+          showToast(`no row focused — click a row first`, 'err');
+        }
+        return;
+      }
+
+      if (e.key === 'Enter') { e.preventDefault(); doTeleport(cur.pid); return; }
+      if (e.key === 'r') {
+        e.preventDefault();
+        if (!cur.session.alive) { showToast('cannot rename — session has exited', 'err'); return; }
+        beginRename(cur.pid);
+        return;
+      }
+      if (e.key === 'R') { e.preventDefault(); doResetTitle(cur.pid); return; }
+      if (e.key === 's') { e.preventDefault(); doSave(cur.pid, cur.cwd); return; }
+      if (e.key === 'c') { e.preventDefault(); doCopy(cur.cwd); return; }
+      if (e.key === 'x') {
+        e.preventDefault();
+        if (!cur.session.alive) doForget(cur.pid);
+        else doKill(cur.pid);
+        return;
+      }
+    });
+
+    function openFilter() {
+      $filterBar.classList.add('on');
+      $filterInput.value = filter;
+      $filterInput.focus();
+      $filterInput.select();
+    }
+    function closeFilter() {
+      $filterBar.classList.remove('on');
+      filter = '';
+      render();
+    }
+    $filterInput.addEventListener('input', () => {
+      filter = $filterInput.value;
+      render();
+    });
+
+    // ── stats / live indicator ────────────────────────────
+    function renderStats() {
+      if (!state) return;
+      const t = state.totals;
+      // count VSCode sessions (server doesn't return this in totals; compute client-side)
+      let vscodeCount = 0;
+      for (const g of state.groups) for (const s of g.sessions) {
+        if (!isTeleportable(s.term)) vscodeCount++;
+      }
+      const parts = [];
+      parts.push(`<span>${t.sessions} session${t.sessions === 1 ? '' : 's'}</span>`);
+      parts.push(`<span class="dot">·</span>`);
+      parts.push(`<span>${state.groups.length} project${state.groups.length === 1 ? '' : 's'}</span>`);
+      if (t.oldestStartedAt) {
+        const oldestSec = (Date.now() - t.oldestStartedAt) / 1000;
+        parts.push(`<span class="dot">·</span>`);
+        parts.push(`<span>oldest ${fmtDuration(oldestSec)}</span>`);
+      }
+      if (t.saved > 0) {
+        parts.push(`<span class="dot">·</span>`);
+        parts.push(`<span>${t.saved} saved</span>`);
+      }
+      if (t.stale > 0) {
+        parts.push(`<span class="dot">·</span>`);
+        parts.push(`<span class="purge-link" id="purgeLink" title="delete state files of dead PIDs">${t.stale} stale — purge</span>`);
+      }
+      if (vscodeCount > 0) {
+        parts.push(`<span class="dot">·</span>`);
+        const cls = hideVscode ? 'off' : 'on';
+        const label = hideVscode ? `show ${vscodeCount} vscode` : `hide ${vscodeCount} vscode`;
+        parts.push(`<span class="toggle-link ${cls}" id="vscodeToggle" title="toggle VSCode integrated terminals">${label}</span>`);
+      }
+      parts.push(`<span class="dot">·</span>`);
+      parts.push(`<span class="sync-link" id="syncLink" title="pull tab titles from iTerm / Terminal.app back into tabout">↻ sync titles</span>`);
+      const liveHtml = $live.outerHTML;
+      $stats.innerHTML = parts.join('') + ' ' + liveHtml;
+      document.getElementById('purgeLink')?.addEventListener('click', doPurgeStale);
+      document.getElementById('syncLink')?.addEventListener('click', doPullTitles);
+      document.getElementById('vscodeToggle')?.addEventListener('click', toggleVscode);
+    }
+
+    function setLive(connected, label) {
+      const liveEl = document.getElementById('live') || $live;
+      liveEl.className = 'live' + (connected ? '' : ' dead');
+      liveEl.querySelector('.text').textContent = label;
+    }
+
+    // ── SSE connect ───────────────────────────────────────
+    let es = null;
+    function connect() {
+      es = new EventSource('/api/events');
+      es.addEventListener('open', () => {
+        setLive(true, 'live');
+      });
+      es.addEventListener('sessions', (ev) => {
+        try {
+          state = JSON.parse(ev.data);
+          lastEventAt = Date.now();
+          render();
+          renderStats();
+          setLive(true, 'live');
+        } catch (e) {
+          console.error('parse failed', e);
+        }
+      });
+      es.addEventListener('error', () => {
+        setLive(false, 'disconnected — retrying');
+        es.close();
+        setTimeout(connect, 1500);
+      });
+    }
+
+    // periodic re-render so "running 2h 18m" / "last 12s" tick without server pushes
+    setInterval(() => {
+      if (state) {
+        render();
+        renderStats();
+      }
+    }, 15000);
+
+    connect();
+  })();
+  </script>
+</body>
+</html>

@@ -13,5 +13,5 @@
     "declaration": true
   },
   "include": ["src/**/*"],
-  "exclude": ["node_modules", "dist", "src/collector", "src/**/*.test.ts", "vitest.config.ts"]
+  "exclude": ["node_modules", "dist", "src/collector", "src/web", "src/**/*.test.ts", "vitest.config.ts"]
 }

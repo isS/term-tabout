@@ -2,10 +2,11 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 
 /**
- * 用户重命名的会话标题持久化到 ~/.term-tabout/titles.json。
- * 按 cwd 索引（PID 易变，不能作 key）。
+ * 用户重命名的 session 标题持久化到 ~/.term-tabout/titles.json。
  *
- * UI 层写、collector 不读。读路径已在 SessionManager 里做。
+ * 按 **PID（字符串化）** 索引而非 cwd —— 同一个 group 里两个 shell 的 cwd
+ * 可能相同，按 cwd 索引会让两个 row 共用一个 title（用户实际遇到的 bug）。
+ * PID 跨重启会复用，purgeStale 会同步清理 dead PID 的 title 条目。
  */
 export class JsonTitlesStore {
   private file: string;
@@ -27,20 +28,40 @@ export class JsonTitlesStore {
     this.loaded = true;
   }
 
-  get(cwd: string): string | undefined {
-    return this.map[cwd];
+  get(pid: number): string | undefined {
+    return this.map[String(pid)];
   }
 
-  async set(cwd: string, title: string): Promise<void> {
+  async set(pid: number, title: string): Promise<void> {
     if (!this.loaded) await this.load();
-    this.map[cwd] = title;
+    this.map[String(pid)] = title;
     await this.save();
   }
 
-  async delete(cwd: string): Promise<void> {
+  async delete(pid: number): Promise<void> {
     if (!this.loaded) await this.load();
-    delete this.map[cwd];
+    delete this.map[String(pid)];
     await this.save();
+  }
+
+  /** 删除所有不在 alivePids 中的 title 条目，返回是否变更过 */
+  async pruneDead(alivePids: Set<number>): Promise<boolean> {
+    if (!this.loaded) await this.load();
+    let changed = false;
+    for (const k of Object.keys(this.map)) {
+      const pid = Number(k);
+      if (!Number.isFinite(pid) || !alivePids.has(pid)) {
+        delete this.map[k];
+        changed = true;
+      }
+    }
+    if (changed) await this.save();
+    return changed;
+  }
+
+  /** 拷贝当前 map（仅用于 server 侧只读分发）*/
+  snapshot(): Record<string, string> {
+    return { ...this.map };
   }
 
   private async save(): Promise<void> {
