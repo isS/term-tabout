@@ -253,11 +253,27 @@ export async function startServer(opts: ServerOptions): Promise<RunningServer> {
         stderr.includes('-25211') ||
         stderr.includes('辅助访问') ||
         stderr.includes('发送按键');
-      const payload: typeof r & { needsAccessibility?: boolean; hint?: string } = { ...r };
+      // -1743 = "Not authorized to send Apple events to <App>" —— teleport 的
+      // `tell application "iTerm"` 控制目标终端需要"自动化(Automation)"权限，
+      // 与上面的"辅助功能(Accessibility)"是不同的设置面板。首次点击会弹系统授权框，
+      // 用户拒绝后即一直抛 -1743。这是新用户最常撞上的坎。
+      const needsAutomation =
+        !needsAccessibility &&
+        (stderr.includes('-1743') ||
+          stderr.includes('not authorized to send apple events'));
+      const payload: typeof r & {
+        needsAccessibility?: boolean;
+        needsAutomation?: boolean;
+        hint?: string;
+      } = { ...r };
       if (needsAccessibility) {
         payload.needsAccessibility = true;
         payload.hint =
           'macOS 输入监控/辅助功能权限未授予 node。打开"系统设置 → 隐私与安全性 → 辅助功能"，把运行 term-tabout 的 node 可执行文件添加进去并启用，然后重启 server。';
+      } else if (needsAutomation) {
+        payload.needsAutomation = true;
+        payload.hint =
+          'macOS 自动化权限未授予。term-tabout 需要"自动化(Automation)"权限来控制目标终端。打开"系统设置 → 隐私与安全性 → 自动化"，找到运行 term-tabout 的终端（或 node），勾选其下方的目标终端；若列表里没有，再点一次 teleport 触发系统授权弹窗并选"好"。';
       }
       sendJson(res, r.exitCode === 0 ? 200 : 500, payload);
       return;

@@ -936,6 +936,18 @@
         }
         return;
       }
+      if (body.needsAutomation) {
+        alert(
+          '无法切换到目标终端：缺少 macOS"自动化"权限。\n\n' +
+          'term-tabout 通过运行它的终端去控制目标终端，这需要"自动化(Automation)"权限\n' +
+          '（注意：和"辅助功能"是不同的面板）。\n\n' +
+          '修复方法：\n' +
+          ' 1. 打开"系统设置 → 隐私与安全性 → 自动化"\n' +
+          ' 2. 找到运行 term-tabout 的终端（或 node），勾选其下方的目标终端\n' +
+          ' 3. 若列表里没有它，回来再点一次 teleport，在弹出的系统授权框里选"好"'
+        );
+        return;
+      }
       showToast(`teleport failed: ${(body.stderr || '').split('\n')[0] || `HTTP ${res?.status}`}`, 'err');
     }
     async function doKill(pid) {
