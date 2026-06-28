@@ -1,8 +1,16 @@
 {
   "name": "term-tabout",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "macOS terminal session dashboard — Bento-style overview of every active shell, with teleport, save, rename and three-axis time metrics.",
   "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/isS/term-tabout.git"
+  },
+  "homepage": "https://github.com/isS/term-tabout#readme",
+  "bugs": {
+    "url": "https://github.com/isS/term-tabout/issues"
+  },
   "bin": {
     "term-tabout": "dist/cli.js"
   },

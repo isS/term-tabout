@@ -144,6 +144,14 @@ export async function startServer(opts: ServerOptions): Promise<RunningServer> {
     const p = u.pathname;
     res.setHeader('cache-control', 'no-store');
 
+    // DNS-rebinding 防护：服务仅绑定 127.0.0.1，但浏览器里的恶意网页仍可向本机端口
+    // 发请求；这类攻击的 Host 头是攻击者域名。只放行指向回环地址的 Host，挡掉整类浏览器攻击。
+    const hostname = (req.headers.host || '').split(':')[0];
+    if (hostname !== '127.0.0.1' && hostname !== 'localhost' && hostname !== '[::1]') {
+      sendJson(res, 403, { error: 'forbidden host' });
+      return;
+    }
+
     // ── API ────────────────────────────────────────────
     if (p === '/api/sessions' && req.method === 'GET') {
       const payload = buildPayload(latest, titles, opts.home);
