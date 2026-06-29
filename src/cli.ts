@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import meow from 'meow';
 import { promises as fs } from 'node:fs';
+import { readFileSync, writeFileSync, unlinkSync, mkdirSync } from 'node:fs';
 import { exec } from 'node:child_process';
 import os from 'node:os';
 import path from 'node:path';
@@ -96,8 +97,20 @@ if (cli.flags.setTitle) {
   process.exit(0);
 }
 
+// 单实例：同一 home 同时只允许一个 server。第二次调用不再起新服务，
+// 而是打开已有实例的仪表盘后退出——"一个系统只启动一个"。
+const lockPath = path.join(home, 'server.json');
+const existing = readServerLock(lockPath);
+if (existing && isPidAlive(existing.pid)) {
+  console.log(`term-tabout 已在运行 — ${existing.url}  (pid ${existing.pid})`);
+  console.log('一个系统只启动一个实例，正在打开已有的仪表盘…');
+  if (cli.flags.open) exec(`open '${existing.url}'`, () => {});
+  process.exit(0);
+}
+
 // 默认入口：启动 web server + 自动开浏览器
 const running = await startServer({ home, port: cli.flags.port });
+writeServerLock(lockPath, { pid: process.pid, port: running.port, url: running.url });
 console.log(`term-tabout — ${running.url}`);
 console.log(`  state: ${home}`);
 console.log(`  press ctrl-c to stop`);
@@ -107,12 +120,34 @@ if (cli.flags.open) {
   });
 }
 
+const removeLock = () => {
+  try { unlinkSync(lockPath); } catch {}
+};
 const shutdown = async () => {
+  removeLock();
   await running.close();
   process.exit(0);
 };
 process.on('SIGINT', shutdown);
 process.on('SIGTERM', shutdown);
+process.on('exit', removeLock);
+
+function readServerLock(p: string): { pid: number; url: string } | null {
+  try {
+    const d = JSON.parse(readFileSync(p, 'utf-8'));
+    if (typeof d.pid === 'number' && typeof d.url === 'string') return d;
+  } catch {}
+  return null;
+}
+function writeServerLock(p: string, lock: { pid: number; port: number; url: string }): void {
+  try {
+    mkdirSync(path.dirname(p), { recursive: true });
+    writeFileSync(p, JSON.stringify(lock));
+  } catch {}
+}
+function isPidAlive(pid: number): boolean {
+  try { process.kill(pid, 0); return true; } catch { return false; }
+}
 
 async function runTeleport(pidStr: string): Promise<void> {
   const pid = Number.parseInt(pidStr, 10);

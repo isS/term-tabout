@@ -4,6 +4,8 @@
 >
 > A macOS dashboard of every active shell across your terminals (iTerm2 / Ghostty / Terminal.app / VSCode integrated terminals) — teleport, rename, bookmark, clean up.
 
+![term-tabout demo](docs/demo.gif)
+
 ## 🤖 让 AI 帮你安装 / Let an AI install it
 
 把下面这段话发给你的 AI Agent（Claude Code 等），它会读文档并自动装好、配置好：
