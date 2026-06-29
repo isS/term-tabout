@@ -1,6 +1,6 @@
 {
   "name": "term-tabout",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "macOS terminal session dashboard — Bento-style overview of every active shell, with teleport, save, rename and three-axis time metrics.",
   "type": "module",
   "repository": {

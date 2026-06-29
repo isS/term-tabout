@@ -19,6 +19,9 @@ function __tt_json_escape
 end
 
 function __tt_record
+    # 必须有控制终端：跳过 GUI 应用探测环境时跑的无 tty `fish -c` shell，
+    # 否则它们会堆积成 cwd=/、term=unknown 的"幽灵"会话（详见 zsh collector 注释）。
+    isatty stdout; or return
     mkdir -p $__TT_STATES 2>/dev/null
     set -l pid $fish_pid
     set -l state_file "$__TT_STATES/$pid.json"

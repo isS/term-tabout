@@ -128,9 +128,19 @@
 
   /* Masonry via CSS multi-column flow — cards pack top-down,
      no row-track alignment gaps. */
+  /* 最短列优先 masonry：列由 JS(layoutMasonry)按"当前最矮列"分配卡片，
+     避免 CSS 多列布局被单个高卡片撑爆、右侧留空。 */
   .masonry {
-    column-width: 300px;
-    column-gap: 14px;
+    display: flex;
+    align-items: flex-start;
+    gap: 14px;
+  }
+  .masonry-col {
+    flex: 1 1 0;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
   }
 
   .session-group {
@@ -139,13 +149,37 @@
     border-radius: 10px;
     padding: 12px 12px 10px;
     min-width: 0;
-    margin: 0 0 14px;
-    break-inside: avoid;
-    -webkit-column-break-inside: avoid;
-    page-break-inside: avoid;
+    margin: 0;
     display: block;
     width: 100%;
   }
+  .show-more {
+    width: 100%;
+    margin-top: 6px;
+    padding: 5px;
+    background: transparent;
+    border: 1px dashed var(--border);
+    border-radius: 6px;
+    color: var(--muted);
+    cursor: pointer;
+    font-size: 12px;
+  }
+  .show-more:hover { color: var(--text-strong); border-color: var(--accent); }
+  .group-clear {
+    margin-left: auto;
+    padding: 2px 8px;
+    background: transparent;
+    border: 1px solid rgba(224,108,117,.35);
+    border-radius: 6px;
+    color: var(--pink);
+    cursor: pointer;
+    font-size: 11px;
+    opacity: 0;
+    transition: opacity .12s;
+  }
+  .session-group:hover .group-clear,
+  .session-group.focused .group-clear { opacity: .85; }
+  .group-clear:hover { opacity: 1; background: rgba(224,108,117,.12); }
   .session-group.focused {
     border-color: var(--accent);
     box-shadow: 0 0 0 1px var(--accent) inset, 0 6px 20px rgba(97,175,239,.16);
@@ -485,6 +519,13 @@
     let renamingPid = null;
     /** In-flight rename input value/selection — survives SSE rerenders. */
     let renamingDraft = null; // { value, selStart, selEnd }
+    /** Per-group row cap; groups with more rows show a "+ N more" button. */
+    const GROUP_ROW_CAP = 6;
+    /** Group names the user expanded past the cap (by g.name). */
+    const expandedGroups = new Set();
+    /** Sessions to actually render for a group (capped unless expanded). */
+    const shownSessions = (g) =>
+      expandedGroups.has(g.name) ? g.sessions : g.sessions.slice(0, GROUP_ROW_CAP);
     /** Plain text filter; empty string = no filter. */
     let filter = '';
     /** Hide VSCode integrated terminals (persisted to localStorage). */
@@ -646,12 +687,12 @@
         return;
       }
 
-      const html = filteredGroups.map((g) => renderGroup(g, now)).join('');
-      $grid.innerHTML = html;
+      layoutMasonry(filteredGroups.map((g) => renderGroup(g, now)));
 
-      // Build flat row order for keyboard nav
+      // Build flat row order for keyboard nav — only over SHOWN (capped) rows,
+      // so nav never targets a row that isn't in the DOM.
       filteredGroups.forEach((g, gi) => {
-        g.sessions.forEach((s, si) => {
+        shownSessions(g).forEach((s, si) => {
           window.__rows.push({ pid: s.pid, cwd: s.cwd, gi, si, group: g, session: s });
         });
       });
@@ -672,6 +713,32 @@
       }
     }
 
+    // 最短列优先 masonry：建 N 个列容器，每张卡片追加到当前最矮的列。
+    // 这样单个高卡片也撑不爆布局、右列不会空、卡片间也无行缝（Pinterest 式做法）。
+    function layoutMasonry(cardHtmls) {
+      $grid.innerHTML = '';
+      const colW = 300, gap = 14;
+      const n = Math.max(1, Math.floor(($grid.clientWidth + gap) / (colW + gap)));
+      const cols = [];
+      const colH = new Array(n).fill(0);
+      for (let i = 0; i < n; i++) {
+        const c = document.createElement('div');
+        c.className = 'masonry-col';
+        $grid.appendChild(c);
+        cols.push(c);
+      }
+      const tpl = document.createElement('template');
+      for (const html of cardHtmls) {
+        tpl.innerHTML = html.trim();
+        const el = tpl.content.firstElementChild;
+        if (!el) continue;
+        let mi = 0;
+        for (let i = 1; i < n; i++) if (colH[i] < colH[mi]) mi = i;
+        cols[mi].appendChild(el);
+        colH[mi] += el.offsetHeight + gap;
+      }
+    }
+
     function renderGroup(g, now) {
       const focusedHere = window.__rows && window.__rows.some(
         (r) => r.group === g && r.pid === focusedPid
@@ -688,14 +755,30 @@
       if (g.saved) pills.push(`<span class="group-pill saved">★ saved</span>`);
       if (g.duplicateCwds > 0) pills.push(`<span class="group-pill">${g.duplicateCwds + 1}× same cwd</span>`);
 
-      const rows = g.sessions.map((s) => renderRow(s, g, now)).join('');
+      const shown = shownSessions(g);
+      const rows = shown.map((s) => renderRow(s, g, now)).join('');
+      const hidden = g.sessions.length - shown.length;
+      let moreBtn = '';
+      if (hidden > 0) {
+        moreBtn = `<button class="show-more" data-group="${escapeHTML(g.name)}">+ ${hidden} more</button>`;
+      } else if (expandedGroups.has(g.name) && g.sessions.length > GROUP_ROW_CAP) {
+        moreBtn = `<button class="show-more" data-group="${escapeHTML(g.name)}">collapse</button>`;
+      }
+      // 组级批量清除：当组里有 stale 或不可 teleport 的"幽灵"会话时，给一个一键
+      // 强制 forget 整组的入口（否则只能一行行删，比如 cwd=/ 的 50 个幽灵）。
+      const junky = g.hasStale || g.sessions.some((s) => !s.alive || !isTeleportable(s.term));
+      const clearBtn = junky
+        ? `<button class="group-clear" data-group="${escapeHTML(g.name)}" title="强制 forget 整组 ${g.sessions.length} 个会话（只从仪表盘移除，不杀进程）">✕ clear ${g.sessions.length}</button>`
+        : '';
       return `
         <article class="${cls}" data-group="${escapeHTML(g.name)}">
           <div class="group-head">
             <h3>${escapeHTML(g.name)}</h3>
             ${pills.join('')}
+            ${clearBtn}
           </div>
           <ul class="session-list">${rows}</ul>
+          ${moreBtn}
         </article>
       `;
     }
@@ -802,6 +885,35 @@
             else if (act === 'forget') doForget(pid);
             else if (act === 'copy') doCopy(cwd);
           });
+        });
+      });
+      // "+ N more" / collapse — toggle the group's expanded state and rerender.
+      $grid.querySelectorAll('.show-more').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const name = btn.getAttribute('data-group');
+          if (expandedGroups.has(name)) expandedGroups.delete(name);
+          else expandedGroups.add(name);
+          render();
+        });
+      });
+      // "✕ clear N" — force-forget every session in the group in one shot.
+      $grid.querySelectorAll('.group-clear').forEach((btn) => {
+        btn.addEventListener('click', async (e) => {
+          e.stopPropagation();
+          const name = btn.getAttribute('data-group');
+          const grp = state && state.groups.find((g) => g.name === name);
+          if (!grp) return;
+          const pids = grp.sessions.map((s) => s.pid);
+          if (!confirm(`强制 forget "${name}" 里全部 ${pids.length} 个会话？\n（仅从仪表盘移除，不会 kill 进程）`)) return;
+          btn.disabled = true;
+          await Promise.all(pids.map((pid) =>
+            fetch('/api/forget', {
+              method: 'POST',
+              headers: { 'content-type': 'application/json' },
+              body: JSON.stringify({ pid, force: true }),
+            }).catch(() => {})
+          ));
+          showToast(`cleared ${pids.length} from ${name}`, 'ok');
         });
       });
     }
@@ -1074,6 +1186,13 @@
     }
 
     // ── keyboard ──────────────────────────────────────────
+    // 视口变化时重排 masonry 列数，避免变窄/变宽后右侧留空。
+    let _resizeT;
+    window.addEventListener('resize', () => {
+      clearTimeout(_resizeT);
+      _resizeT = setTimeout(render, 150);
+    });
+
     document.addEventListener('keydown', (e) => {
       // 带 modifier 的按键留给浏览器/OS（Cmd+R / Cmd+Shift+R / Ctrl+F / …），
       // 否则会把 hard-refresh 的 'R' 误当成 reset-title。

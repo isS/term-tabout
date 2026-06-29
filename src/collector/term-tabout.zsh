@@ -4,6 +4,10 @@
 _term_tabout_record() {
   # 仅交互式 shell 才记录
   [[ $- != *i* ]] && return
+  # 必须有控制终端。GUI 应用(VS Code / Cursor 等)解析环境变量时会跑 `zsh -i`，
+  # 它是交互式但 stdout 是管道、没有 tty；被孤儿化后永不退出，会堆积成 cwd=/、
+  # term=unknown 的"幽灵"会话。这类 shell 不是能 teleport 的真实终端 tab，跳过。
+  [[ -t 1 ]] || return
 
   local state_dir="$HOME/.term-tabout/states"
   mkdir -p "$state_dir" 2>/dev/null || return
